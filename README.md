@@ -1,14 +1,32 @@
 # Repo Radar
 
-A fast, local code observatory. Repo Radar scans a repository and reports its shape — file counts, sizes, language mix, and the largest files — so you can understand a codebase before you change it.
+A local code observatory. Repo Radar inspects a repository and explains it: what it is, where it came from, how it is built, how to run it, how it holds together, what it depends on, what shape it is in, and what has been happening in it.
 
-Everything runs on your machine. There is no network access, no telemetry, and Repo Radar never writes to the repository it scans.
+It is built for the moment you open a codebase with no context in your head. That happens three ways, and all three are first-class:
 
-This is also a Rust learning project, built spec-first. [SPEC.md](SPEC.md) is the authoritative product behavior, [docs/SDD.md](docs/SDD.md) defines the development process and quality gates, and [docs/ROADMAP.md](docs/ROADMAP.md) sequences the work.
+- **Code you cloned** and have never read
+- **Code you wrote** and have since forgotten
+- **Code you are about to change** and want to understand before touching
+
+Repo Radar is an instrument, not a build tool. It reads, it explains, and it never touches the thing it is measuring.
+
+## The read-only promise
+
+**Repo Radar treats every repository it inspects as immutable, and is always safe to run.**
+
+- It never creates, modifies, deletes, or renames anything inside the scanned repository
+- It never mutates Git state — no fetch, no pull, no checkout, no index refresh
+- It never executes any code, script, task, or command it finds, including ones it reports back to you
+- It performs no network access unless you explicitly ask, and never sends repository content anywhere
+- It collects no telemetry, and never will
+
+This is the central product promise, not a limitation of the current release. It is enforced by a mandatory test harness that digests a fixture tree before and after every command — contents, sizes, timestamps, and permissions — and fails if anything moved, including on error paths. The full constitution is [spec 000](docs/specs/000-safety-invariants.md).
+
+You should be able to point Repo Radar at an untrusted clone without reading it first. That is the point.
 
 ## Features
 
-Shipped today:
+Shipped today. Everything else is specified and sequenced in the [roadmap](#roadmap) below.
 
 - **Deterministic recursive scanning** — results do not depend on filesystem directory ordering, so two scans of the same tree are equal.
 - **Safe traversal** — symbolic links are never followed, and `.git`, `target`, and `node_modules` are skipped by default.
@@ -161,28 +179,103 @@ fn main() -> std::io::Result<()> {
 
 ## Roadmap
 
-Repo Radar is being built toward an interactive local code observatory. Phases 0-2 are complete. Full detail, including per-phase Rust learning goals, is in [docs/ROADMAP.md](docs/ROADMAP.md).
+Repo Radar is built spec-first: every capability below has a written specification with acceptance criteria before any code is written. Phases 0-2 are complete. Full detail, ordering rationale, and per-phase Rust learning goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-| Phase | Feature | Status |
-| --- | --- | --- |
-| 1 | [Scan engine](docs/specs/001-scan-engine.md) | Complete |
-| 2 | [Structured output](docs/specs/002-structured-output.md) | Complete |
-| 3 | [Parallel scanning](docs/specs/007-parallel-scanning.md) | Next |
-| 4 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, Git activity, Cargo dependencies | Planned |
-| 5 | [Code annotations](docs/specs/008-code-annotations.md) — TODO/FIXME harvest and test signals | Planned |
-| 6 | [Symbol index](docs/specs/009-symbol-index.md) — what is defined, and where | Planned |
-| 7 | [Dependency graph](docs/specs/010-dependency-graph.md) — module and package graphs, cycles, entry points | Planned |
-| 8 | [Incremental cache](docs/specs/011-incremental-cache.md) — warm scans proportional to what changed | Planned |
-| 9 | [Watch mode](docs/specs/004-watch-mode.md) — live updates as files change | Planned |
-| 10 | [Terminal explorer](docs/specs/005-terminal-explorer.md) — interactive `ratatui` navigation | Planned |
-| 11 | [Search index](docs/specs/012-search-index.md) — fast content and symbol search | Planned |
-| 12 | [Local web API](docs/specs/006-local-web-api.md) — optional loopback-only browser UI | Optional |
+### Milestone A — Trustworthy core
 
-Deliberate non-goals: cloud sync, telemetry, editing your source, a hosted service, and a large frontend before the local core is reusable.
+| Phase | Feature |
+| --- | --- |
+| 3 | [Safety invariants](docs/specs/000-safety-invariants.md) — the immutability harness every later phase inherits |
+| 4 | [Parallel scanning](docs/specs/007-parallel-scanning.md) — `rayon` fan-out, byte-identical results |
+| 5 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, Git basics, Cargo deps |
+
+### Milestone B — Orientation
+
+The milestone that justifies the tool: `repo-radar brief` tells a stranger what a repository is and how to start.
+
+| Phase | Feature |
+| --- | --- |
+| 6 | [Provenance](docs/specs/013-provenance.md) — origin, fork status, license, authorship, bus factor |
+| 7 | [Project profile](docs/specs/014-project-profile.md) — stated purpose and full tech stack, every finding citing its evidence file |
+| 8 | [Runbook](docs/specs/015-runbook.md) — build, run, test, and configure knowledge, extracted and never executed |
+| 9 | [Orientation brief](docs/specs/020-brief.md) — **the headline command**, in onboard and resume modes |
+
+### Milestone C — Structure
+
+| Phase | Feature |
+| --- | --- |
+| 10 | [Code annotations](docs/specs/008-code-annotations.md) — TODO/FIXME harvest and test-surface signals |
+| 11 | [Symbol index](docs/specs/009-symbol-index.md) — what is defined, and where |
+| 12 | [Incremental cache](docs/specs/011-incremental-cache.md) — warm runs proportional to what changed |
+| 13 | [Dependency graph](docs/specs/010-dependency-graph.md) — module and package graphs, cycles, orphans |
+| 14 | [Subsystem map](docs/specs/016-subsystem-map.md) — named components you can hold in your head |
+
+### Milestone D — Judgement
+
+| Phase | Feature |
+| --- | --- |
+| 15 | [Dependency intelligence](docs/specs/017-dependency-intelligence.md) — versions, staleness, SPDX licensing conflicts, alternatives |
+| 16 | [Activity and hotspots](docs/specs/021-activity.md) — commit pulse, churn-versus-size risk, change coupling, knowledge gaps |
+| 17 | [Health assessment](docs/specs/018-health-assessment.md) — ranked findings, each citing its evidence |
+
+### Milestone E — Visualization
+
+| Phase | Feature |
+| --- | --- |
+| 18 | [Visual report](docs/specs/019-visual-report.md) — one self-contained HTML file, subsystem diagram, hotspot scatter, treemap, no network |
+
+### Milestone F — Live and interactive
+
+| Phase | Feature |
+| --- | --- |
+| 19 | [Watch mode](docs/specs/004-watch-mode.md) — live updates as files change |
+| 20 | [Search index](docs/specs/012-search-index.md) — fast content and symbol search |
+| 21 | [Terminal explorer](docs/specs/005-terminal-explorer.md) — interactive `ratatui` navigation |
+| 22 | [Local web API](docs/specs/006-local-web-api.md) — optional loopback-only browser UI |
+
+### The command tree
+
+Where this is heading, as a shape:
+
+```text
+repo-radar [PATH]           # scan: what is in here
+repo-radar brief [PATH]     # what do I need to know to start
+repo-radar run [PATH]       # how do I build, run, and configure it
+repo-radar symbols [PATH]   # what is defined, and where
+repo-radar graph [PATH]     # how does it hold together
+repo-radar map [PATH]       # what are its subsystems
+repo-radar deps [PATH]      # what does it depend on, and at what cost
+repo-radar activity [PATH]  # what has been happening here
+repo-radar health [PATH]    # what is wrong, and what matters most
+repo-radar report [PATH]    # show me all of it, visually
+repo-radar search QUERY     # where is this thing
+repo-radar watch [PATH]     # keep this current as I work
+repo-radar tui [PATH]       # let me explore it interactively
+repo-radar serve [PATH]     # serve it to a local browser
+```
+
+### Deliberate non-goals
+
+- Modifying, formatting, or fixing the repository under inspection
+- Executing any code, task, or command found in a repository
+- Cloud sync, hosted services, or telemetry of any kind
+- Network access as a default behavior
+- Presenting a heuristic as a fact, or an absent analysis as a passing one
+
+### Honesty requirements
+
+Repo Radar's value depends on being trusted about what it does not know. Across every feature:
+
+- An analysis that could not run reports `not evaluated`, never a pass
+- A heuristic is labelled as one, and states the evidence behind it
+- Absent input produces an explicit gap, never a plausible-sounding guess
+- Recommendations, such as dependency alternatives or health scores, are labelled as opinion and carry their inputs
 
 ## Development
 
-Repo Radar uses spec-driven development. Behavior changes start with a specification update, not with code. See [docs/SDD.md](docs/SDD.md).
+Repo Radar uses spec-driven development. Behavior changes start with a specification update, not with code. See [docs/SDD.md](docs/SDD.md) for the policy and [docs/specs/](docs/specs/) for the 22 feature specifications.
+
+[Spec 000](docs/specs/000-safety-invariants.md) outranks everything else. Any change that could write to a scanned repository, mutate Git state, execute repository content, or reach the network by default must amend it first, in its own reviewed change.
 
 Quality gates, matching CI:
 

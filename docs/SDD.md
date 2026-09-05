@@ -6,12 +6,15 @@ Repo Radar uses spec-driven development (SDD). The goal is a repeatable path fro
 
 When sources disagree, use this order:
 
-1. The active product specification in `SPEC.md`
-2. A feature specification in `docs/specs/`
-3. Tests that encode an accepted requirement
-4. Implementation details
+1. The safety invariants in [`docs/specs/000-safety-invariants.md`](specs/000-safety-invariants.md)
+2. The active product specification in `SPEC.md`
+3. A feature specification in `docs/specs/`
+4. Tests that encode an accepted requirement
+5. Implementation details
 
 If the desired behavior is not specified, stop and clarify the requirement before expanding the implementation.
+
+Spec 000 is deliberately first. It states that a scanned repository is immutable, that repository content is never executed, that the network is opt-in, and that there is no telemetry. A feature that needs one of those relaxed does not proceed by arguing its case in a pull request; it amends spec 000 in a separate reviewed change, or it does not ship.
 
 ## Change Loop
 
@@ -36,6 +39,8 @@ A roadmap phase closes only when its specification's acceptance criteria are all
 - A **Roadmap** section summarizing what is next, linked to `docs/ROADMAP.md`
 
 A phase that ships behavior without this README update is incomplete, regardless of test status.
+
+Any phase that adds or changes a command must also demonstrate that the command upholds the spec 000 invariants under the shared immutability harness. A new command with no harness coverage is incomplete.
 
 ## Pull Request Contract
 
