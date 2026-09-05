@@ -1,0 +1,8 @@
+[package]
+name = "repo-radar"
+version = "0.1.0"
+edition = "2024"
+description = "A fast, local repository summary tool for learning Rust"
+license = "MIT"
+
+[dependencies]
