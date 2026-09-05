@@ -20,7 +20,7 @@ The CLI remains the stable core. TUI and web interfaces consume the same library
 | Phase | Target | Spec | Expected outcome |
 | --- | --- | --- | --- |
 | 0 | Current baseline | `SPEC.md` | Human-readable summary works locally |
-| 1 | Weeks 1-2 | [001 scan engine](specs/001-scan-engine.md) | Testable library core with deterministic traversal and ignore rules |
+| 1 | Weeks 1-2 | [001 scan engine](specs/001-scan-engine.md) | Testable library core with deterministic traversal and ignore rules (complete) |
 | 2 | Week 3 | [002 structured output](specs/002-structured-output.md) | Stable JSON output for scripts and future UIs |
 | 3 | Weeks 4-5 | [003 repository intelligence](specs/003-repository-intelligence.md) | Useful language, size, Git, and dependency signals |
 | 4 | Week 6 | [004 watch mode](specs/004-watch-mode.md) | Live incremental updates without rescanning everything |

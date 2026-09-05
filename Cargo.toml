@@ -6,3 +6,7 @@ description = "A fast, local repository summary tool for learning Rust"
 license = "MIT"
 
 [dependencies]
+
+[[bench]]
+name = "scan_engine"
+harness = false
