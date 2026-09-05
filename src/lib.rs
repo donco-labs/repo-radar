@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 mod languages;
+pub mod render;
 
 pub use languages::LANGUAGE_TABLE_VERSION;
 

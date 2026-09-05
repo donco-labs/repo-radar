@@ -11,6 +11,7 @@ The practice is deliberately manual until phase 24, when `repo-radar practices .
 | Phase | Date | Files | Bytes | Lines | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 4 (parcel 4a) | 2026-09-05 | 49 | 272.5 KiB | 5,698 | First run with language, line, and directory signals. Two findings against ourselves — see below. |
+| 5 (parcel 5a) | 2026-09-05 | 57 | — | — | Finding 1 partly resolved: `main.rs` 483 → 208. |
 
 ## Phase 4 — 2026-09-05
 
@@ -51,3 +52,21 @@ For a spec-driven project at phase 4 of 29 this is defensible — the specificat
 ### What the tool could not tell us
 
 Everything else. There is no symbol index, no dependency graph, no coupling measure, no test-posture signal, and no practice assessment yet, so nothing here speaks to structure or coupling — only to size. That gap is the point of running this now: the baseline exists so later phases can be measured against it rather than described.
+
+## Phase 5a — 2026-09-05 — finding 1, partly resolved
+
+The render module split moved all three renderers out of the binary and into `src/render/`.
+
+| File | Before | After | Against a 400-line threshold |
+| --- | --- | --- | --- |
+| `src/main.rs` | 483 | 208 | within |
+| `src/lib.rs` | 766 | 767 | still 1.9× |
+| `src/render/html/mod.rs` | — | 152 | within |
+| `src/render/text.rs` | — | 121 | within |
+| `src/render/html/markup.rs` | — | 95 | within |
+| `src/render/json.rs` | — | 73 | within |
+| `src/render/mod.rs` | — | 65 | within |
+
+`main.rs` is resolved. **`lib.rs` is not**, and is now the only file in the repository over the threshold. It still holds traversal, the model, line counting, and directory aggregation in one file. The `scan/` and `analysis/` split from [ENGINEERING.md](../ENGINEERING.md) is what closes it, and it remains open debt rather than being quietly re-scoped.
+
+The prompt for this parcel was a human reading `print_html` and calling it unmodular — not the tool, and not the log. Worth recording honestly: at phase 5 our own instrument measures size and nothing else, so it could report that `main.rs` was long but not that its contents were in the wrong crate. Coupling and structure are [025](../specs/025-practice-assessment.md), phase 24. Until then the log records what a person noticed, and that is a limitation of the tool rather than of the practice.
