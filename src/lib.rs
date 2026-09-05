@@ -42,6 +42,36 @@ pub struct ScanReport {
     pub warnings: Vec<ScanWarning>,
 }
 
+/// Replaces characters that a terminal would interpret as commands.
+///
+/// Repository content — file names, branch names, commit messages — is
+/// untrusted input. Written to a terminal unchanged, an embedded escape
+/// sequence can recolor, reposition, or erase output, letting a hostile
+/// repository forge or hide part of a report. This upholds invariant I4 of
+/// `docs/specs/000-safety-invariants.md`.
+///
+/// C0 controls, `DEL`, and the C1 range are replaced with U+FFFD so the
+/// presence of the character stays visible. Tab and newline are also replaced,
+/// because a name containing either can fake a column or an entire row.
+pub fn sanitize_for_terminal(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() || ('\u{80}'..='\u{9f}').contains(&character) {
+                char::REPLACEMENT_CHARACTER
+            } else {
+                character
+            }
+        })
+        .collect()
+}
+
+/// Renders a path for terminal display with control characters neutralized.
+///
+/// Lossy conversion is deliberate: a non-UTF-8 path must still be reportable.
+pub fn display_path(path: &Path) -> String {
+    sanitize_for_terminal(&path.to_string_lossy())
+}
+
 pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
     if !root.is_dir() {
         return Err(io::Error::new(
@@ -243,6 +273,43 @@ mod tests {
 
         assert!(scan(&fixture.root.join("missing"), &ScanConfig::default()).is_err());
         assert!(scan(&file, &ScanConfig::default()).is_err());
+    }
+
+    #[test]
+    fn sanitizes_terminal_control_sequences() {
+        assert_eq!(
+            sanitize_for_terminal("plain/name.rs"),
+            "plain/name.rs",
+            "ordinary text must pass through unchanged"
+        );
+        assert_eq!(
+            sanitize_for_terminal("evil\u{1b}[31mname"),
+            "evil\u{fffd}[31mname",
+            "the escape byte must not survive, but the rest of the name must"
+        );
+        for hostile in ["a\u{7}b", "a\u{7f}b", "a\u{9b}b", "a\tb", "a\nb", "a\rb"] {
+            let sanitized = sanitize_for_terminal(hostile);
+            assert!(
+                !sanitized.chars().any(|character| character.is_control()),
+                "control character survived sanitizing {hostile:?} into {sanitized:?}"
+            );
+            assert_eq!(sanitized.chars().count(), 3, "length must be preserved");
+        }
+    }
+
+    #[test]
+    fn sanitizing_preserves_non_ascii_text() {
+        for text in ["café/ünïcode.rs", "日本語", "emoji-🦀.rs"] {
+            assert_eq!(sanitize_for_terminal(text), text);
+        }
+    }
+
+    #[test]
+    fn display_path_neutralizes_control_characters() {
+        let rendered = display_path(Path::new("src/evil\u{1b}[2Kname.rs"));
+
+        assert!(!rendered.contains('\u{1b}'));
+        assert!(rendered.contains("[2Kname.rs"));
     }
 
     #[cfg(unix)]
