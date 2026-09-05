@@ -36,6 +36,18 @@ The interface includes:
 6. Core state transitions have unit tests independent of terminal rendering.
 7. A smoke test documents the supported terminal backend and minimum dimensions.
 
+## Renderer
+
+`ratatui`, deliberately, and not the Dioxus terminal renderer.
+
+[024 view layer](024-view-layer.md) adopts Dioxus for the browser and desktop surfaces, and unifying the terminal under the same component tree was the strongest architectural argument for that choice. It is not available. As checked on 2026-09-05, `dioxus-tui` (formerly `rink`, now `plasmo`) sits at `0.5.0-alpha.0` against a `0.7.10` core — three minor versions behind, never released out of alpha, with its published documentation still pointing at the 0.4 docs.
+
+Repo Radar therefore accepts **two view layers over one model**: Dioxus for browser and desktop, `ratatui` for the terminal. That is a real cost, and it is the cheaper one. Adopting an abandoned alpha to buy architectural elegance would trade a working terminal surface for a speculative one, and this project does not ship speculation.
+
+Revisit if the Dioxus terminal renderer reaches parity with its core version.
+
 ## Constraints
 
 The TUI is a consumer of the library. It must not contain filesystem traversal or Git parsing logic.
+
+It shares the JSON contract of [002](002-structured-output.md) with the view layer, not code. Neither surface may define a field the model does not carry, and neither may add analysis of its own.

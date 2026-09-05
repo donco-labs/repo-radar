@@ -2,7 +2,7 @@
 
 Status: Planned
 Priority: P1
-Depends on: `001-scan-engine`, `002-structured-output`, `003-repository-intelligence`, `011-incremental-cache`
+Depends on: `001-scan-engine`, `002-structured-output`, `003-repository-intelligence`
 
 ## Goal
 
@@ -26,10 +26,12 @@ Watch mode observes create, modify, remove, and rename events under the configur
 4. Rename events do not leave stale paths in the report.
 5. Watch mode exits without panic when the root is removed.
 6. Tests use a temporary fixture and do not depend on timing tighter than the configured debounce interval.
-7. A benchmark records full-rescan versus incremental-update cost.
+7. A benchmark records refresh cost per debounce window, establishing the baseline that [011](011-incremental-cache.md) is later measured against.
 
 ## Constraints
 
 The event source must be abstracted behind a trait so deterministic tests do not require a live filesystem watcher.
 
-Incremental updates reuse the cache invalidation rules from [011](011-incremental-cache.md) rather than defining a second staleness model.
+This phase ships with a full rescan per debounce window. That is correct, trivially verifiable, and fast enough at the repository sizes the tool targets today, and it unblocks the live surface in [006](006-local-web-api.md) without waiting on a caching layer.
+
+Incremental refresh is added when [011](011-incremental-cache.md) lands, reusing its cache invalidation rules rather than defining a second staleness model. The observable behavior specified here does not change when it does; only the cost does, which is what the benchmark in criterion 7 exists to record.
