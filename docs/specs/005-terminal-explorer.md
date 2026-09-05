@@ -2,7 +2,7 @@
 
 Status: Planned
 Priority: P1
-Depends on: `002-structured-output`, `003-repository-intelligence`, `004-watch-mode`
+Depends on: `002-structured-output`, `003-repository-intelligence`, `004-watch-mode`, `009-symbol-index`, `010-dependency-graph`
 
 ## Goal
 
@@ -21,7 +21,7 @@ The interface includes:
 - A summary header with files, bytes, and warning count
 - A sortable file or directory table
 - Filters by extension and path substring
-- A detail pane for the selected path
+- A detail pane for the selected path showing its symbols, annotations, and graph neighbors
 - A visible watch/update indicator
 - A readable fallback message when stdout is not a terminal
 - Keyboard help and a clean `q` exit

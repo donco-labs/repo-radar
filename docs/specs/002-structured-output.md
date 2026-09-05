@@ -1,6 +1,6 @@
 # Feature Specification: Structured Output
 
-Status: Planned
+Status: Implemented
 Priority: P0
 Depends on: `001-scan-engine`
 

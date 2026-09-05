@@ -1,6 +1,6 @@
 # Feature Specification: Scan Engine
 
-Status: Planned
+Status: Implemented
 Priority: P0
 Depends on: `SPEC.md`
 

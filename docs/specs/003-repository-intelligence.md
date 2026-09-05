@@ -19,6 +19,8 @@ Add opt-in analysis sections for:
 - Recent commit activity by day over a configurable window
 - A first-pass dependency view for Cargo projects from `Cargo.toml` and `Cargo.lock`
 
+Line counting and language families are the per-file signals this phase owns. Annotation harvesting is specified in [008](008-code-annotations.md), and the graph view of dependencies is specified in [010](010-dependency-graph.md).
+
 Each analysis reports whether it ran, its result, and a warning when its input is unavailable.
 
 ## Acceptance Criteria

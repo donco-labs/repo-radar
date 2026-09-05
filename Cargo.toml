@@ -6,3 +6,9 @@ description = "A fast, local repository summary tool for learning Rust"
 license = "MIT"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bench]]
+name = "scan_engine"
+harness = false

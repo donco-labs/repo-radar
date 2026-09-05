@@ -24,6 +24,19 @@ Every feature or behavior change follows this sequence:
 5. Run formatting, tests, and Clippy with warnings denied.
 6. Update user-facing documentation and record the spec in the change description.
 
+## Phase Completion
+
+A roadmap phase closes only when its specification's acceptance criteria are all verified, the specification `Status` reads `Implemented`, the roadmap status column is updated, and `README.md` documents the shipped state.
+
+`README.md` must always describe the tool as it exists on `master`, not as it is planned. At every phase boundary it must contain:
+
+- A **Features** section listing every shipped capability
+- A **Getting Started** section with installation steps and runnable examples
+- A **Usage** section covering every flag and subcommand the binary accepts
+- A **Roadmap** section summarizing what is next, linked to `docs/ROADMAP.md`
+
+A phase that ships behavior without this README update is incomplete, regardless of test status.
+
 ## Pull Request Contract
 
 Each change must state:
