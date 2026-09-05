@@ -25,6 +25,10 @@ fn every_invocation(root: &str) -> Vec<Vec<String>> {
         owned(&[root, "--format", "json"]),
         owned(&[root, "--top", "0"]),
         owned(&[root, "--top", "1000000"]),
+        // Line counting opens and reads every file in the target, so a
+        // default run and a `--no-lines` run are the change most likely to
+        // touch access times or otherwise disturb the tree (spec 003, AC7).
+        owned(&[root, "--no-lines"]),
         owned(&["--help"]),
         owned(&[root, "--format", "yaml"]),
         owned(&[root, "--top", "not-a-number"]),
