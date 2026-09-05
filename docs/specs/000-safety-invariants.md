@@ -42,6 +42,15 @@ Repo Radar collects no usage data, sends no analytics, and reports no crash data
 
 Symbolic links are not followed. Path traversal in manifests, configuration, or overrides cannot escape the scanned root.
 
+There is exactly one exception, and it is narrow. [022 agent activity](022-agent-activity.md) reads agent session logs that live in the user's home directory, outside any repository. That reading is permitted only under all of the following conditions, and a violation of any of them is a violation of this invariant:
+
+1. It happens only when the user passes `--agents` on that invocation. It is never implied by another flag and never enabled by configuration.
+2. The locations read come from a fixed, versioned table in the tool. No path is constructed from repository content, from an agent log, or from any other untrusted value.
+3. Reading is the only operation. The exception grants no write, no create, and no delete anywhere outside the target; I5 governs writes and is unchanged.
+4. The immutability harness is extended to cover the agent log sources, asserting they are byte-identical before and after the run.
+
+The exception is for reading agent session logs and nothing else. Any future analysis wanting to read outside the scanned root requires its own amendment here, in its own reviewed change.
+
 ### I9. Hostile input degrades, it does not crash
 
 Deeply nested trees, enormous files, cyclic structures, invalid UTF-8, and malformed manifests produce warnings and bounded resource use, never a panic, an unbounded allocation, or a descriptor leak.

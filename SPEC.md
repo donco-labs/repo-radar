@@ -34,7 +34,7 @@ A user must be able to run Repo Radar against an untrusted clone without reading
 Repo Radar is a command tree. The bare form scans, so the simplest use needs no subcommand:
 
 ```text
-repo-radar [PATH] [--format text|json] [--top N]
+repo-radar [PATH] [--format text|json|html] [--top N]
 ```
 
 Named commands expose the deeper analyses. Each is specified by the feature specification named beside it:
@@ -48,17 +48,26 @@ Named commands expose the deeper analyses. Each is specified by the feature spec
 | `graph` | How does it hold together? | 010 |
 | `map` | What are its subsystems? | 016 |
 | `deps` | What does it depend on, and at what cost? | 017 |
-| `activity` | What has been happening here? | 021 |
+| `activity` | What has been happening here, and who did it? | 021, 022 |
+| `agentic` | How is it set up for agents? | 026 |
+| `practices` | How well is it built? | 025 |
 | `health` | What is wrong, and what matters most? | 018 |
-| `report` | Show me all of it, visually. | 019 |
+| `report` | Give me a snapshot I can share. | 019 |
 | `search` | Where is this thing? | 012 |
 | `watch` | Keep this current as I work. | 004 |
 | `tui` | Let me explore it interactively. | 005 |
-| `serve` | Serve it to a local browser. | 006 |
+| `serve` | Show me all of it, live, in a browser. | 006 |
 
-When no path is supplied, the current directory is scanned. The default output format is `text`; `json` is the machine contract.
+When no path is supplied, the current directory is scanned. The default output format is `text`; `json` is the machine contract and `html` is a self-contained visual snapshot of the same report.
+
+The rich visual surface is `serve`, not a file. A repository under active development changes while it is being read, and a document written once is stale on arrival; `serve` binds a loopback port and streams the model as it changes. Its interface is written in Rust — a Dioxus component tree compiled to wasm and embedded in the binary, specified by [024 view layer](docs/specs/024-view-layer.md). The `html` snapshot remains, for the narrower job of attaching a frozen view to a review.
 
 `--help` and `-h` print usage for the tool or for a named command and exit successfully. Help output is authoritative: every accepted flag appears in it.
+
+Two flags widen what the tool touches, so both are opt-in per invocation and neither is ever implied by another flag:
+
+- `--agents` reads local agent session logs from outside the scanned repository, to report authorship process. Specified by [022 agent activity](docs/specs/022-agent-activity.md). Structural events only; no prompt text, no model output, no network.
+- `--network` asks the origin forge for the repository's public metadata. Specified by [023 forge metadata](docs/specs/023-forge-metadata.md). Sends the host, owner, and repository name and nothing else.
 
 As the command tree grows beyond two commands, argument parsing may adopt an established parser crate. The observable interface defined here does not change when it does.
 
@@ -97,34 +106,44 @@ Repo Radar's value depends on being trusted about what it does not know.
 3. Extension counts are case-insensitive and files without an extension are grouped as `[no extension]`.
 4. `--top N` limits the largest-file list to at most `N` entries, and a non-numeric `N` exits with status `2`.
 5. `--format json` emits one valid JSON document on stdout and nothing on stderr.
-6. `--help` output names every supported flag.
-7. Every command upholds the invariants of spec 000 under its mandatory test harness.
-8. `cargo test` passes.
-9. `cargo clippy --all-targets --all-features -- -D warnings` passes.
+6. `--format html` emits a self-contained HTML dashboard with no external requests.
+7. `--help` output names every supported flag.
+8. Every command upholds the invariants of spec 000 under its mandatory test harness.
+9. `cargo test` passes.
+10. `cargo clippy --all-targets --all-features -- -D warnings` passes.
 
 ## Planned Evolution
 
-Future capabilities require a new or revised spec before implementation. The sequenced specifications and delivery order live in [docs/ROADMAP.md](docs/ROADMAP.md).
+Future capabilities require a new or revised spec before implementation. The sequenced specifications and delivery order live in [docs/ROADMAP.md](docs/ROADMAP.md). How the code implementing them is built — module structure, coupling rules, Rust idiom, lint posture — is in [docs/ENGINEERING.md](docs/ENGINEERING.md).
 
 **Foundation**
 
 - [000 Safety invariants](docs/specs/000-safety-invariants.md) — active
 - [001 Scan engine](docs/specs/001-scan-engine.md) — implemented
 - [002 Structured output](docs/specs/002-structured-output.md) — implemented
-- [007 Parallel scanning](docs/specs/007-parallel-scanning.md)
 - [003 Repository intelligence](docs/specs/003-repository-intelligence.md)
 
 **Orientation**
 
-- [013 Provenance and identity](docs/specs/013-provenance.md)
 - [014 Project profile](docs/specs/014-project-profile.md)
+- [013 Provenance and identity](docs/specs/013-provenance.md)
 - [015 Runbook extraction](docs/specs/015-runbook.md)
 - [020 Orientation brief](docs/specs/020-brief.md)
+
+**Live**
+
+- [004 Watch mode](docs/specs/004-watch-mode.md)
+- [006 Local live surface](docs/specs/006-local-web-api.md)
+- [024 View layer](docs/specs/024-view-layer.md)
+- [022 Agent activity](docs/specs/022-agent-activity.md)
+- [026 Agentic readiness](docs/specs/026-agentic-readiness.md)
+- [023 Forge metadata](docs/specs/023-forge-metadata.md)
 
 **Structure**
 
 - [008 Code annotations and test signals](docs/specs/008-code-annotations.md)
 - [009 Symbol index](docs/specs/009-symbol-index.md)
+- [007 Parallel scanning](docs/specs/007-parallel-scanning.md)
 - [011 Incremental cache](docs/specs/011-incremental-cache.md)
 - [010 Dependency graph](docs/specs/010-dependency-graph.md)
 - [016 Subsystem map](docs/specs/016-subsystem-map.md)
@@ -133,12 +152,11 @@ Future capabilities require a new or revised spec before implementation. The seq
 
 - [017 Dependency intelligence](docs/specs/017-dependency-intelligence.md)
 - [021 Activity and hotspots](docs/specs/021-activity.md)
+- [025 Practice assessment](docs/specs/025-practice-assessment.md)
 - [018 Health assessment](docs/specs/018-health-assessment.md)
 
 **Surfaces**
 
 - [019 Visual report](docs/specs/019-visual-report.md)
-- [004 Watch mode](docs/specs/004-watch-mode.md)
 - [012 Search index](docs/specs/012-search-index.md)
 - [005 Terminal explorer](docs/specs/005-terminal-explorer.md)
-- [006 Optional local web API](docs/specs/006-local-web-api.md)

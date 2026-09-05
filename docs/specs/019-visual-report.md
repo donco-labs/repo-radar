@@ -46,5 +46,6 @@ Also emit machine formats for other tools:
 ## Constraints
 
 - Self-contained means self-contained. No content delivery network, no telemetry pixel, no font fetch, enforced by a test that greps the output for external URL schemes.
+- The snapshot is **rendered by the native binary**, not by the wasm view layer of [024](024-view-layer.md). It is inert HTML and SVG with no runtime: a document that must open from `file://` on a machine that may never run the tool, years after it was generated. Embedding a wasm blob to render a frozen report would add weight and a runtime dependency to buy nothing. The two surfaces share the model, not the renderer, and the visual language should stay recognisably the same across both.
 - The report is a rendering of the model from earlier specs and must contain no analysis logic of its own.
 - Visual encoding must be legible without color alone, so severity and staleness also carry shape or text.

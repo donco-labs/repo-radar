@@ -1,14 +1,32 @@
 # Repo Radar
 
-A local code observatory. Repo Radar inspects a repository and explains it: what it is, where it came from, how it is built, how to run it, how it holds together, what it depends on, what shape it is in, and what has been happening in it.
+A local code observatory. Repo Radar inspects a repository and explains it: what it is, where it came from, how it is built, how to run it, how it holds together, what it depends on, what shape it is in, what has been happening in it, and who has been changing it.
 
-It is built for the moment you open a codebase with no context in your head. That happens three ways, and all three are first-class:
+It is built for the moment you open a codebase with no context in your head. That happens four ways, and all four are first-class:
 
 - **Code you cloned** and have never read
 - **Code you wrote** and have since forgotten
 - **Code you are about to change** and want to understand before touching
+- **Code being written right now**, by an agent, while you watch
 
 Repo Radar is an instrument, not a build tool. It reads, it explains, and it never touches the thing it is measuring.
+
+### What makes it different
+
+Counting files by extension is solved, and `cloc`, `tokei`, and `scc` solve it well. Repo Radar aims at two things those tools and a forge's insights tab do not reach:
+
+- **It is live.** A repository under active development is a moving target, and a report written once is stale on arrival. The primary rich surface is `repo-radar serve` — one command that scans, binds a loopback port, opens a browser, and streams the model as the repository changes. See [spec 006](docs/specs/006-local-web-api.md).
+- **It reads authorship process, not just state.** Most non-trivial code is now written with agentic assistance, and that process leaves structured local traces. With `--agents`, Repo Radar reads them and reports what an agent touched, in what order, how fast, what it rewrote, and what it changed without ever reading — live, while it works. Structural events only: no prompt text, no model output, no network. See [spec 022](docs/specs/022-agent-activity.md).
+
+Both are specified and sequenced, not yet built. What is shipped today is listed under Features below, and nothing else is claimed.
+
+### The UI is Rust
+
+The browser surface is a [Dioxus](https://dioxuslabs.com) component tree compiled to `wasm32-unknown-unknown` and embedded in the binary — no separate frontend project, no npm, no asset directory, and no hand-written TypeScript interface that can drift from the Rust model. The same component tree renders to a native WebView, so a desktop shell is a renderer swap rather than a second application. Architecture and the pinned version are in [spec 024](docs/specs/024-view-layer.md).
+
+The server underneath it is deliberately *not* a framework: `std::net::TcpListener`, a bounded thread pool, and server-sent events written by hand. The scan engine is synchronous, and adding an async runtime to serve a local dashboard would colour the whole crate async to solve a problem it does not have.
+
+The terminal explorer keeps [`ratatui`](https://ratatui.rs). Unifying it under the same component tree was the strongest argument for Dioxus, but its terminal renderer sits at `0.5.0-alpha.0` against a `0.7.10` core and its own docs link still points at 0.4 — so Repo Radar accepts two view layers over one model rather than one view layer over an abandoned dependency. [Spec 005](docs/specs/005-terminal-explorer.md) records that decision and the evidence for it.
 
 ## The read-only promise
 
@@ -36,6 +54,7 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 - **Extension and size summary** — file counts grouped by lowercase extension, total byte size, and the largest files in descending order.
 - **Human output** — a readable summary with byte sizes formatted as B, KiB, MiB, or GiB.
 - **JSON output** — one versioned machine-readable document on stdout, suitable for pipelines and future UIs.
+- **HTML dashboard** — a self-contained visual snapshot with composition bars, largest files, and scan notes.
 - **Reusable library** — `repo_radar::scan` is callable from Rust without spawning a process, with traversal configurable through `ScanConfig`.
 - **Strict argument handling** — an unknown flag, a missing flag value, a bad value, or a second path is a usage error, never a silent fallback.
 - **Terminal-safe output** — file names carrying ANSI escape sequences or other control characters are neutralized before display, so a hostile repository cannot recolor, reposition, or hide part of a report.
@@ -105,7 +124,8 @@ Arguments:
   PATH                  Directory to scan (default: the current directory)
 
 Options:
-  --format text|json    Output format (default: text)
+  --format text|json|html
+                        Output format (default: text; html is a standalone dashboard)
   --top N               Number of largest files to list (default: 10)
   -h, --help            Print help and exit
 ```
@@ -158,6 +178,19 @@ repo-radar . --format json | jq -e '.warnings | length == 0' > /dev/null
 
 The schema is additive within version `1`. Removing or renaming a field requires a new schema version and a spec update.
 
+### HTML dashboard
+
+Generate a visual snapshot that can be opened directly in a browser. It has no external assets or network requests:
+
+```bash
+cargo run -- . --format html --top 8 > /tmp/repo-radar.html
+open /tmp/repo-radar.html
+```
+
+The dashboard is an early visual surface over the same scan model as text and JSON. As repository intelligence lands, it will grow with those fields rather than maintaining a separate UI model.
+
+Note what this is and is not. A file written to `/tmp` is a *snapshot*: stale the moment it is written, and unable to show anything that moves. It stays, because attaching a frozen view to a review is a real job. But it is not the intended way to look at a repository — that is `repo-radar serve`, which needs no redirect, no temporary path, and no manual reload, and which streams updates as the repository changes. It is specified in [spec 006](docs/specs/006-local-web-api.md) and scheduled as phase 10.
+
 ### Library use
 
 ```rust
@@ -183,59 +216,67 @@ fn main() -> std::io::Result<()> {
 
 ## Roadmap
 
-Repo Radar is built spec-first: every capability below has a written specification with acceptance criteria before any code is written. Phases 0-3 are complete. Full detail, ordering rationale, and per-phase Rust learning goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
+Repo Radar is built spec-first: every capability below has a written specification with acceptance criteria before any code is written, and [docs/ENGINEERING.md](docs/ENGINEERING.md) states how the code implementing them is built. Phases 0-3 — the scan engine, the JSON contract, and the enforced immutability harness — are complete. Full detail, ordering rationale, and per-phase Rust learning goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-### Milestone A — Trustworthy core
+### Milestone A — Orientation
+
+Composition stops being a list of file extensions: languages ranked by source bytes, directory weight, a stated purpose with the file it came from, and where the code came from.
 
 | Phase | Feature | Status |
 | --- | --- | --- |
-| 3 | [Safety invariants](docs/specs/000-safety-invariants.md) — the immutability harness every later phase inherits | **Complete** |
-| 4 | [Parallel scanning](docs/specs/007-parallel-scanning.md) — `rayon` fan-out, byte-identical results | Next |
-| 5 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, Git basics, Cargo deps | Planned |
+| 4 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, largest directories, Git basics, Cargo deps | In progress |
+| 5 | [Engineering guidelines](docs/ENGINEERING.md) — module tree, the `Analysis` seam, crate lints, declared MSRV | Planned |
+| 6 | [Project profile](docs/specs/014-project-profile.md) — stated purpose from the manifest or README, and full tech stack, every finding citing its evidence file | Planned |
+| 7 | [Provenance](docs/specs/013-provenance.md) — origin, fork status, license, authorship, bus factor | Planned |
+| 8 | [Runbook](docs/specs/015-runbook.md) — build, run, test, and configure knowledge, extracted and never executed | Planned |
+| 9 | [Orientation brief](docs/specs/020-brief.md) — **the headline command**, in onboard and resume modes | Planned |
 
-### Milestone B — Orientation
+### Milestone B — Live
 
-The milestone that justifies the tool: `repo-radar brief` tells a stranger what a repository is and how to start.
-
-| Phase | Feature |
-| --- | --- |
-| 6 | [Provenance](docs/specs/013-provenance.md) — origin, fork status, license, authorship, bus factor |
-| 7 | [Project profile](docs/specs/014-project-profile.md) — stated purpose and full tech stack, every finding citing its evidence file |
-| 8 | [Runbook](docs/specs/015-runbook.md) — build, run, test, and configure knowledge, extracted and never executed |
-| 9 | [Orientation brief](docs/specs/020-brief.md) — **the headline command**, in onboard and resume modes |
-
-### Milestone C — Structure
+One command, a real surface, current while you work.
 
 | Phase | Feature |
 | --- | --- |
-| 10 | [Code annotations](docs/specs/008-code-annotations.md) — TODO/FIXME harvest and test-surface signals |
-| 11 | [Symbol index](docs/specs/009-symbol-index.md) — what is defined, and where |
-| 12 | [Incremental cache](docs/specs/011-incremental-cache.md) — warm runs proportional to what changed |
-| 13 | [Dependency graph](docs/specs/010-dependency-graph.md) — module and package graphs, cycles, orphans |
-| 14 | [Subsystem map](docs/specs/016-subsystem-map.md) — named components you can hold in your head |
+| 10 | [Watch mode](docs/specs/004-watch-mode.md) — debounced refresh as files change |
+| 11 | [Local live surface](docs/specs/006-local-web-api.md) — the `serve` transport: loopback-only, server-sent events, hand-rolled on `std::net::TcpListener` with no async runtime and no framework |
+| 12 | [View layer](docs/specs/024-view-layer.md) — **the UI, written in Rust**: a Dioxus component tree compiled to wasm, embedded in the binary, driven by signals off the SSE stream |
 
-### Milestone D — Judgement
+### Milestone C — The differentiator
 
 | Phase | Feature |
 | --- | --- |
-| 15 | [Dependency intelligence](docs/specs/017-dependency-intelligence.md) — versions, staleness, SPDX licensing conflicts, alternatives |
-| 16 | [Activity and hotspots](docs/specs/021-activity.md) — commit pulse, churn-versus-size risk, change coupling, knowledge gaps |
-| 17 | [Health assessment](docs/specs/018-health-assessment.md) — ranked findings, each citing its evidence |
+| 13 | [Agent activity](docs/specs/022-agent-activity.md) — **watch an agent build, in real time**: files touched, edit velocity, rework rate, writes to files never read, changes with no test touched. Vendor-neutral event model with per-agent adapters |
+| 14 | [Agentic readiness](docs/specs/026-agentic-readiness.md) — **how the repo is set up for agents**: subagents, skills, hooks, MCP servers, permission breadth, committed-credential detection, and whether the work is governed by specs, plan artifacts, or conversation alone. Plus the comparison only we can make — configured versus actually used |
+| 15 | [Forge metadata](docs/specs/023-forge-metadata.md) — description, topics, stars, forks, open issues, releases, archived state, and how far this clone has drifted. Opt-in `--network`, sends the repository name and nothing else |
 
-### Milestone E — Visualization
-
-| Phase | Feature |
-| --- | --- |
-| 18 | [Visual report](docs/specs/019-visual-report.md) — one self-contained HTML file, subsystem diagram, hotspot scatter, treemap, no network |
-
-### Milestone F — Live and interactive
+### Milestone D — Structure
 
 | Phase | Feature |
 | --- | --- |
-| 19 | [Watch mode](docs/specs/004-watch-mode.md) — live updates as files change |
-| 20 | [Search index](docs/specs/012-search-index.md) — fast content and symbol search |
-| 21 | [Terminal explorer](docs/specs/005-terminal-explorer.md) — interactive `ratatui` navigation |
-| 22 | [Local web API](docs/specs/006-local-web-api.md) — optional loopback-only browser UI |
+| 16 | [Code annotations](docs/specs/008-code-annotations.md) — TODO/FIXME harvest and test-surface signals |
+| 17 | [Symbol index](docs/specs/009-symbol-index.md) — what is defined, and where |
+| 18 | [Parallel scanning](docs/specs/007-parallel-scanning.md) — `rayon` fan-out, byte-identical results |
+| 19 | [Incremental cache](docs/specs/011-incremental-cache.md) — warm runs proportional to what changed |
+| 20 | [Dependency graph](docs/specs/010-dependency-graph.md) — module and package graphs, cycles, orphans |
+| 21 | [Subsystem map](docs/specs/016-subsystem-map.md) — named components you can hold in your head |
+
+### Milestone E — Judgement
+
+| Phase | Feature |
+| --- | --- |
+| 22 | [Dependency intelligence](docs/specs/017-dependency-intelligence.md) — versions, staleness, SPDX licensing conflicts, alternatives |
+| 23 | [Activity and hotspots](docs/specs/021-activity.md) — commit pulse, churn-versus-size risk, change coupling, knowledge gaps |
+| 24 | [Practice assessment](docs/specs/025-practice-assessment.md) — **how well is it built**: structure, coupling, test posture, toolchain gates, error handling. Every finding cites its evidence and the threshold that produced it. No score, no grade, no ranking — and this repository is its first fixture |
+| 25 | [Health assessment](docs/specs/018-health-assessment.md) — ranked findings, each citing its evidence |
+
+### Milestone F — More surfaces
+
+| Phase | Feature |
+| --- | --- |
+| 26 | [Visual report](docs/specs/019-visual-report.md) — one self-contained HTML file to attach to a review: subsystem diagram, hotspot scatter, treemap, no network |
+| 27 | [Search index](docs/specs/012-search-index.md) — fast content and symbol search |
+| 28 | [Terminal explorer](docs/specs/005-terminal-explorer.md) — interactive `ratatui` navigation |
+| 29 | [Desktop shell](docs/specs/024-view-layer.md) — the phase 12 component tree in a native WebView, for the cost of a renderer swap |
 
 ### The command tree
 
@@ -249,21 +290,31 @@ repo-radar symbols [PATH]   # what is defined, and where
 repo-radar graph [PATH]     # how does it hold together
 repo-radar map [PATH]       # what are its subsystems
 repo-radar deps [PATH]      # what does it depend on, and at what cost
-repo-radar activity [PATH]  # what has been happening here
+repo-radar activity [PATH]  # what has been happening here, and who did it
+repo-radar agentic [PATH]   # how is it set up for agents
+repo-radar practices [PATH] # how well is it built
 repo-radar health [PATH]    # what is wrong, and what matters most
-repo-radar report [PATH]    # show me all of it, visually
+repo-radar report [PATH]    # give me a snapshot I can share
 repo-radar search QUERY     # where is this thing
 repo-radar watch [PATH]     # keep this current as I work
 repo-radar tui [PATH]       # let me explore it interactively
-repo-radar serve [PATH]     # serve it to a local browser
+repo-radar serve [PATH]     # show me all of it, live, in a browser
+```
+
+Two flags widen what the tool touches, so both are opt-in per invocation and neither is ever implied:
+
+```text
+--agents     # read local agent session logs, to report authorship process
+--network    # ask the origin forge for this repository's public metadata
 ```
 
 ### Deliberate non-goals
 
 - Modifying, formatting, or fixing the repository under inspection
-- Executing any code, task, or command found in a repository
-- Cloud sync, hosted services, or telemetry of any kind
-- Network access as a default behavior
+- Executing any code, task, or command found in a repository, or recorded in an agent log
+- Ingesting prompt text or model output from agent sessions
+- Cloud sync, hosted services, authentication, or telemetry of any kind
+- Network access as a default behavior, or transmitting repository content anywhere
 - Presenting a heuristic as a fact, or an absent analysis as a passing one
 
 ### Honesty requirements
