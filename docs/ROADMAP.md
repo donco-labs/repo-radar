@@ -1,49 +1,72 @@
 # Repo Radar Implementation Roadmap
 
-Status: Proposed
+Status: Active
 Updated: 2026-09-05
 
-This roadmap sequences the feature specifications in `docs/specs/`. Each phase should be completed and verified before the next phase begins. The order favors a useful CLI early, then builds toward a responsive interactive code observatory without prematurely committing to a UI framework.
+This roadmap sequences the feature specifications in `docs/specs/`. Each phase must be completed and verified before the next phase begins. The order favors a useful CLI early, then builds toward a responsive interactive code observatory without prematurely committing to a UI framework.
 
 ## Product Direction
 
-Repo Radar should answer three questions quickly:
+Repo Radar should answer four questions quickly:
 
 1. What is in this repository?
-2. Where should I look first?
-3. What changed or is changing right now?
+2. How does it hold together?
+3. Where should I look first?
+4. What changed or is changing right now?
 
-The CLI remains the stable core. TUI and web interfaces consume the same library and structured data rather than implementing separate scanners.
+The CLI remains the stable core. The TUI and web interfaces consume the same library and structured data rather than implementing separate scanners.
 
 ## Delivery Order
 
-| Phase | Target | Spec | Expected outcome |
+| Phase | Spec | Expected outcome | Status |
 | --- | --- | --- | --- |
-| 0 | Current baseline | `SPEC.md` | Human-readable summary works locally |
-| 1 | Weeks 1-2 | [001 scan engine](specs/001-scan-engine.md) | Testable library core with deterministic traversal and ignore rules (complete) |
-| 2 | Week 3 | [002 structured output](specs/002-structured-output.md) | Stable JSON output for scripts and future UIs |
-| 3 | Weeks 4-5 | [003 repository intelligence](specs/003-repository-intelligence.md) | Useful language, size, Git, and dependency signals |
-| 4 | Week 6 | [004 watch mode](specs/004-watch-mode.md) | Live incremental updates without rescanning everything |
-| 5 | Weeks 7-8 | [005 terminal explorer](specs/005-terminal-explorer.md) | Fast interactive navigation in the terminal |
-| 6 | Optional weeks 9-10 | [006 local web API](specs/006-local-web-api.md) | Browser UI built on the same local data model |
+| 0 | `SPEC.md` | Human-readable summary works locally | Complete |
+| 1 | [001 scan engine](specs/001-scan-engine.md) | Testable library core with deterministic traversal and ignore rules | Complete |
+| 2 | [002 structured output](specs/002-structured-output.md) | Stable JSON output for scripts and future UIs | Complete |
+| 3 | [007 parallel scanning](specs/007-parallel-scanning.md) | Same results, measurably faster on large trees | Next |
+| 4 | [003 repository intelligence](specs/003-repository-intelligence.md) | Language, size, Git, and dependency signals | Planned |
+| 5 | [008 code annotations](specs/008-code-annotations.md) | TODO/FIXME harvest and test-surface signals | Planned |
+| 6 | [009 symbol index](specs/009-symbol-index.md) | What is defined, and where | Planned |
+| 7 | [010 dependency graph](specs/010-dependency-graph.md) | Module and package graphs, cycles, entry points | Planned |
+| 8 | [011 incremental cache](specs/011-incremental-cache.md) | Warm scans proportional to what changed | Planned |
+| 9 | [004 watch mode](specs/004-watch-mode.md) | Live incremental updates without full rescans | Planned |
+| 10 | [005 terminal explorer](specs/005-terminal-explorer.md) | Fast interactive navigation in the terminal | Planned |
+| 11 | [012 search index](specs/012-search-index.md) | Interactive-speed content and symbol search | Planned |
+| 12 | [006 local web API](specs/006-local-web-api.md) | Optional browser UI on the same local data model | Optional |
 
 ## Milestones
 
-### Milestone A: Useful CLI
+### Milestone A: Useful CLI (phases 3-5)
 
-Complete phases 1-3. A developer can run one command, export a report, and identify the largest, busiest, or most concentrated parts of a repository.
+A developer runs one command, exports a report, and identifies the largest, busiest, or most concentrated parts of a repository, along with its unfinished work.
 
-### Milestone B: Live Observatory
+### Milestone B: Structural Map (phases 6-7)
 
-Complete phase 4. The report stays open while files change and updates only affected summaries.
+Repo Radar knows what is defined and how modules and packages depend on each other, including cycles and orphaned files.
 
-### Milestone C: Interactive Tool
+### Milestone C: Live Observatory (phases 8-9)
 
-Complete phase 5. A terminal user can filter, sort, inspect, and refresh repository signals without memorizing flags.
+Warm scans are near-instant and the report stays open while files change, updating only affected summaries.
 
-### Milestone D: Optional Visual Surface
+### Milestone D: Interactive Tool (phases 10-11)
 
-Complete phase 6 only after the library and TUI prove the data model. The web API is local-only and should not become a second product core.
+A terminal user filters, sorts, inspects, searches, and refreshes repository signals without memorizing flags.
+
+### Milestone E: Optional Visual Surface (phase 12)
+
+Built only after the library, TUI, and data model are stable. The web API is local-only and must not become a second product core.
+
+## Rust Learning Focus per Phase
+
+| Phase | Concepts exercised |
+| --- | --- |
+| 1-2 | Ownership, borrowing, error handling, `serde` derive, module boundaries |
+| 3 | `rayon`, data-parallel iterators, avoiding shared mutable state |
+| 4-5 | Trait objects, streaming file reads, encoding and binary detection |
+| 6-7 | Arena and index-based graphs, lifetimes without reference cycles, topological traversal |
+| 8-9 | Serialization formats, atomic file writes, channels, debouncing, `Drop` and cleanup |
+| 10-11 | `ratatui` state machines, `mmap` and unsafe boundaries, benchmarking discipline |
+| 12 | Async runtimes, graceful shutdown, local-only network surfaces |
 
 ## Working Rhythm
 
@@ -55,6 +78,16 @@ Each phase is one or more small parcels:
 4. Add a benchmark when the phase changes performance-sensitive code.
 5. Run `cargo fmt -- --check`, `cargo test`, and `cargo clippy --all-targets --all-features -- -D warnings`.
 6. Ship the parcel through the `gitify` workflow.
+
+## Phase Exit Checklist
+
+A phase is not complete until all of the following are true:
+
+1. Every acceptance criterion in the phase specification is verified by a test or a documented manual check.
+2. The specification `Status` is updated to `Implemented`.
+3. The quality gates pass locally and in CI.
+4. This roadmap's status column is updated.
+5. `README.md` is updated to reflect the shipped state, including its Features, Getting Started, Usage, and Roadmap sections.
 
 ## Deliberate Non-Goals
 

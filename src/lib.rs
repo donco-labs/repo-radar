@@ -3,6 +3,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanConfig {
     pub ignored_directories: Vec<String>,
@@ -19,13 +21,13 @@ impl Default for ScanConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileEntry {
     pub path: PathBuf,
     pub bytes: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ScanWarning {
     pub path: PathBuf,
     pub message: String,

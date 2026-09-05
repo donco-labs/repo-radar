@@ -2,7 +2,7 @@
 
 Status: Planned
 Priority: P1
-Depends on: `001-scan-engine`, `002-structured-output`, `003-repository-intelligence`
+Depends on: `001-scan-engine`, `002-structured-output`, `003-repository-intelligence`, `011-incremental-cache`
 
 ## Goal
 
@@ -31,3 +31,5 @@ Watch mode observes create, modify, remove, and rename events under the configur
 ## Constraints
 
 The event source must be abstracted behind a trait so deterministic tests do not require a live filesystem watcher.
+
+Incremental updates reuse the cache invalidation rules from [011](011-incremental-cache.md) rather than defining a second staleness model.
