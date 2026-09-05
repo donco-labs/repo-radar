@@ -46,10 +46,11 @@ When no path is supplied, it scans the current directory. The command prints:
 
 ## Planned Evolution
 
-Future capabilities require a new or revised spec before implementation:
+Future capabilities require a new or revised spec before implementation. The sequenced feature specifications and delivery timeline live in [docs/ROADMAP.md](docs/ROADMAP.md):
 
-- Structured JSON output
-- Parallel scanning with benchmark evidence
-- Live filesystem updates
-- Terminal user interface
-- Optional local web interface
+- [Scan engine](docs/specs/001-scan-engine.md)
+- [Structured output](docs/specs/002-structured-output.md)
+- [Repository intelligence](docs/specs/003-repository-intelligence.md)
+- [Watch mode](docs/specs/004-watch-mode.md)
+- [Terminal explorer](docs/specs/005-terminal-explorer.md)
+- [Optional local web API](docs/specs/006-local-web-api.md)

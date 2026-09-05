@@ -4,6 +4,8 @@ Repo Radar is a fast, local repository summary tool built as a Rust learning pro
 
 Development is spec-first. [SPEC.md](SPEC.md) defines the product behavior, and [docs/SDD.md](docs/SDD.md) defines the development process and quality gates.
 
+The planned feature sequence and delivery timeline are in [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Usage
 
 ```text
