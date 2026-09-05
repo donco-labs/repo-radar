@@ -20,7 +20,9 @@ Repo Radar is an instrument, not a build tool. It reads, it explains, and it nev
 - It performs no network access unless you explicitly ask, and never sends repository content anywhere
 - It collects no telemetry, and never will
 
-This is the central product promise, not a limitation of the current release. It is enforced by a mandatory test harness that digests a fixture tree before and after every command — contents, sizes, timestamps, and permissions — and fails if anything moved, including on error paths. The full constitution is [spec 000](docs/specs/000-safety-invariants.md).
+This is the central product promise, not a limitation of the current release, and **it is enforced rather than asserted**. A test harness digests a fixture tree — contents, sizes, timestamps, permissions, and symlink targets — before and after every command, and fails if anything moved, including on error paths. Thirteen tests hold the ten invariants in [spec 000](docs/specs/000-safety-invariants.md), which also records, honestly, the two criteria not yet fully enforced and why.
+
+The harness is tested against itself: it must detect created, modified, and removed files, and it fails rather than trivially passes when run over an empty tree. A harness that cannot fail would make everything built on it worthless.
 
 You should be able to point Repo Radar at an untrusted clone without reading it first. That is the point.
 
@@ -36,6 +38,8 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 - **JSON output** — one versioned machine-readable document on stdout, suitable for pipelines and future UIs.
 - **Reusable library** — `repo_radar::scan` is callable from Rust without spawning a process, with traversal configurable through `ScanConfig`.
 - **Strict argument handling** — an unknown flag, a missing flag value, a bad value, or a second path is a usage error, never a silent fallback.
+- **Terminal-safe output** — file names carrying ANSI escape sequences or other control characters are neutralized before display, so a hostile repository cannot recolor, reposition, or hide part of a report.
+- **Enforced immutability** — a shared test harness proves every command leaves the scanned repository, and its `.git` directory, byte-identical.
 
 ## Getting Started
 
@@ -179,15 +183,15 @@ fn main() -> std::io::Result<()> {
 
 ## Roadmap
 
-Repo Radar is built spec-first: every capability below has a written specification with acceptance criteria before any code is written. Phases 0-2 are complete. Full detail, ordering rationale, and per-phase Rust learning goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
+Repo Radar is built spec-first: every capability below has a written specification with acceptance criteria before any code is written. Phases 0-3 are complete. Full detail, ordering rationale, and per-phase Rust learning goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ### Milestone A — Trustworthy core
 
-| Phase | Feature |
-| --- | --- |
-| 3 | [Safety invariants](docs/specs/000-safety-invariants.md) — the immutability harness every later phase inherits |
-| 4 | [Parallel scanning](docs/specs/007-parallel-scanning.md) — `rayon` fan-out, byte-identical results |
-| 5 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, Git basics, Cargo deps |
+| Phase | Feature | Status |
+| --- | --- | --- |
+| 3 | [Safety invariants](docs/specs/000-safety-invariants.md) — the immutability harness every later phase inherits | **Complete** |
+| 4 | [Parallel scanning](docs/specs/007-parallel-scanning.md) — `rayon` fan-out, byte-identical results | Next |
+| 5 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, Git basics, Cargo deps | Planned |
 
 ### Milestone B — Orientation
 
@@ -290,6 +294,14 @@ Benchmark the scan engine:
 ```bash
 cargo bench --bench scan_engine
 ```
+
+Run only the safety invariant suite:
+
+```bash
+cargo test --test safety_invariants
+```
+
+The shared harness is in `tests/common/mod.rs`. Any new command must run its tests inside `assert_target_unchanged`, which fails the test if the command altered the fixture repository in any way.
 
 A phase is not complete until its acceptance criteria are verified, its spec `Status` reads `Implemented`, the roadmap is updated, and this README reflects the shipped state.
 

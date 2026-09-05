@@ -1,7 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use repo_radar::{ScanConfig, ScanReport, scan};
+use repo_radar::{ScanConfig, ScanReport, display_path, sanitize_for_terminal, scan};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,13 +140,13 @@ Exit status:
 }
 
 fn print_summary(root: &Path, summary: &ScanReport) {
-    println!("Repository: {}", root.display());
+    println!("Repository: {}", display_path(root));
     println!("Files:      {}", summary.files);
     println!("Size:       {}", format_bytes(summary.bytes));
 
     println!("\nLanguages / extensions:");
     for (extension, count) in &summary.by_extension {
-        println!("  {extension:<16} {count}");
+        println!("  {:<16} {count}", sanitize_for_terminal(extension));
     }
 
     println!("\nLargest files:");
@@ -154,7 +154,7 @@ fn print_summary(root: &Path, summary: &ScanReport) {
         println!(
             "  {:>10}  {}",
             format_bytes(file.bytes),
-            file.path.display()
+            display_path(&file.path)
         );
     }
 }

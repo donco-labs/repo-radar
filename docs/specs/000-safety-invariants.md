@@ -1,6 +1,6 @@
 # Feature Specification: Safety Invariants
 
-Status: Active
+Status: Implemented
 Priority: P0
 Depends on: nothing. Every other specification depends on this one.
 
@@ -60,6 +60,25 @@ A check that cannot run reports `not evaluated`. Repo Radar never reports absenc
 6. A test asserts terminal control sequences present in repository content do not reach terminal output intact.
 7. An output path inside the scanned root exits with a usage error rather than writing.
 8. Every specification that adds a command states how it upholds these invariants, or names the invariant it needs relaxed and why.
+
+## Enforcement Status
+
+The harness lives in `tests/common/mod.rs` and the invariant tests in `tests/safety_invariants.rs`. This section records the enforcement level honestly, because a specification that overstates its own coverage is the same defect it exists to prevent.
+
+| Criterion | Status | Notes |
+| --- | --- | --- |
+| 1. Digest before and after every command | Enforced | Covers contents, sizes, modification times, permissions, and symlink targets, across every current invocation |
+| 2. Failure paths covered | Enforced | Missing root, bad flag value, unknown flag, extra argument, unreadable directory, malformed manifest |
+| 3. `.git` byte-identical | Enforced | Plus a check that `HEAD` and `git status --porcelain` are unchanged |
+| 4. No network on a default run | Partial | Enforced at the dependency level: no network-capable crate may enter `Cargo.lock`. A syscall-level guard is required when spec 017 adds `--online` |
+| 5. No shell interpolation, no escape from the root | Enforced | Ten hostile file names including command substitution, separators, and flag-shaped names, with a canary file outside the root |
+| 6. Control sequences do not reach output | Enforced | Fixed a real defect: file names reached the terminal with escape sequences intact |
+| 7. Output path inside the root is a usage error | Deferred | No command accepts an output path yet. A test pins the stronger current property — Repo Radar writes nothing at all — so specs 011 and 019 must extend it rather than quietly gaining a write |
+| 8. Every spec states how it upholds these invariants | Ongoing | Applies to each feature spec as it is implemented |
+
+Two criteria are not fully met. Criterion 4 cannot observe a syscall without a sandbox, so it guards the property that makes a syscall possible. Criterion 7 has nothing to test until a command can write. Both are recorded here rather than marked complete.
+
+The harness is also tested against itself: one test asserts it detects created, modified, and removed files and created directories, and another asserts that running it over an empty tree fails rather than trivially passing. An immutability harness that cannot fail would make every test built on it worthless.
 
 ## Constraints
 

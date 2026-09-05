@@ -29,8 +29,8 @@ Every phase inherits the read-only invariants of [000 safety invariants](specs/0
 | 0 | `SPEC.md` | Human-readable summary works locally | Complete |
 | 1 | [001 scan engine](specs/001-scan-engine.md) | Deterministic, testable library core | Complete |
 | 2 | [002 structured output](specs/002-structured-output.md) | Stable JSON contract, strict CLI | Complete |
-| 3 | [000 safety invariants](specs/000-safety-invariants.md) | Immutability harness every later phase reuses | Next |
-| 4 | [007 parallel scanning](specs/007-parallel-scanning.md) | Same results, measurably faster | Planned |
+| 3 | [000 safety invariants](specs/000-safety-invariants.md) | Immutability harness every later phase reuses | Complete |
+| 4 | [007 parallel scanning](specs/007-parallel-scanning.md) | Same results, measurably faster | Next |
 | 5 | [003 repository intelligence](specs/003-repository-intelligence.md) | Lines, languages, Git basics, Cargo deps | Planned |
 | 6 | [013 provenance](specs/013-provenance.md) | Origin, fork status, license, authorship | Planned |
 | 7 | [014 project profile](specs/014-project-profile.md) | Purpose and full tech stack, with evidence | Planned |
