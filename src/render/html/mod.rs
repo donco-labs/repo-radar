@@ -12,7 +12,7 @@ pub use markup::Html;
 use std::fmt;
 use std::path::Path;
 
-use crate::{ScanReport, display_path};
+use crate::{Analysis, NotEvaluated, ScanReport, display_path};
 
 use super::format_bytes;
 
@@ -110,7 +110,23 @@ fn document(root: &Path, report: &ScanReport) -> Html {
         }
         html.push_static("</tbody></table>");
     }
-    html.push_static("</article><article class=\"panel panel-wide\"><h2>Scan notes</h2>");
+    html.push_static("</article><article class=\"panel\"><h2>Git</h2><p>Status: ");
+    match &report.git_status {
+        Analysis::Ran(status) => html.push_escaped(&format!(
+            "{} modified, {} staged, {} untracked, {} ignored",
+            status.modified, status.staged, status.untracked, status.ignored
+        )),
+        Analysis::NotEvaluated(reason) => html.push_escaped(&not_evaluated_text(reason)),
+    }
+    html.push_static("</p><p>Activity: ");
+    match &report.git_activity {
+        Analysis::Ran(activity) => html.push_escaped(&format!(
+            "{} commits in the last {} days",
+            activity.commits, activity.window_days
+        )),
+        Analysis::NotEvaluated(reason) => html.push_escaped(&not_evaluated_text(reason)),
+    }
+    html.push_static("</p></article><article class=\"panel panel-wide\"><h2>Scan notes</h2>");
     if report.warnings.is_empty() {
         html.push_static("<p class=\"empty\">No warnings. The scan completed cleanly.</p>");
     } else {
@@ -129,6 +145,20 @@ fn document(root: &Path, report: &ScanReport) -> Html {
     );
 
     html
+}
+
+/// A short, human-readable reason for a `NotEvaluated` Git result.
+///
+/// The detail, when present, is more specific than the wire token
+/// (`"not a Git worktree"` rather than `input_unavailable`); every detail
+/// string is tool-authored (see `src/analysis/git.rs`), never repository
+/// content, but it still goes through [`Html::escape`] via `push_escaped`
+/// like every other value this module writes.
+fn not_evaluated_text(reason: &NotEvaluated) -> String {
+    format!(
+        "not evaluated ({})",
+        reason.detail().unwrap_or_else(|| reason.reason())
+    )
 }
 
 #[cfg(test)]
@@ -154,5 +184,47 @@ mod tests {
 
         assert!(!output.contains("<script>evil</script>"));
         assert!(output.contains("&lt;script&gt;evil&lt;/script&gt;.rs"));
+    }
+
+    #[test]
+    fn html_reports_git_results_when_evaluated() {
+        let report = ScanReport {
+            git_status: Analysis::Ran(crate::GitStatus {
+                modified: 2,
+                staged: 1,
+                untracked: 3,
+                ignored: 4,
+            }),
+            git_activity: Analysis::Ran(crate::GitActivity {
+                window_days: 30,
+                commits: 5,
+                by_day: Vec::new(),
+            }),
+            ..ScanReport::default()
+        };
+
+        let mut output = String::new();
+        write_html(&mut output, Path::new("."), &report).expect("writing to a String cannot fail");
+
+        assert!(output.contains("2 modified, 1 staged, 3 untracked, 4 ignored"));
+        assert!(output.contains("5 commits in the last 30 days"));
+    }
+
+    #[test]
+    fn html_names_the_reason_when_git_was_not_evaluated() {
+        let report = ScanReport {
+            git_status: Analysis::NotEvaluated(NotEvaluated::InputUnavailable(
+                "not a Git worktree".to_owned(),
+            )),
+            git_activity: Analysis::NotEvaluated(NotEvaluated::InputUnavailable(
+                "not a Git worktree".to_owned(),
+            )),
+            ..ScanReport::default()
+        };
+
+        let mut output = String::new();
+        write_html(&mut output, Path::new("."), &report).expect("writing to a String cannot fail");
+
+        assert!(output.contains("not evaluated (not a Git worktree)"));
     }
 }

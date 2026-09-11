@@ -59,6 +59,7 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 - **Strict argument handling** — an unknown flag, a missing flag value, a bad value, or a second path is a usage error, never a silent fallback.
 - **Terminal-safe output** — file names carrying ANSI escape sequences or other control characters are neutralized before display, so a hostile repository cannot recolor, reposition, or hide part of a report.
 - **Enforced immutability** — a shared test harness proves every command leaves the scanned repository, and its `.git` directory, byte-identical.
+- **Git basics** — status counts (modified, staged, untracked, ignored) and recent commit activity by day, for a Git worktree; a non-Git directory still produces a complete report. Every `git` invocation carries `--no-optional-locks` and `-c core.fsmonitor=false`, isolates the environment, and is invoked with the root passed via the process's working directory rather than as a command-line argument.
 
 ## Getting Started
 
@@ -127,6 +128,9 @@ Options:
   --format text|json|html
                         Output format (default: text; html is a standalone dashboard)
   --top N               Number of largest files to list (default: 10)
+  --no-lines            Skip line counting (faster; lines report as not evaluated)
+  --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
+  --since-days N        Days back the commit activity window covers (default: 30)
   -h, --help            Print help and exit
 ```
 
@@ -158,6 +162,8 @@ repo-radar . --format json --top 2
     { "path": "src/main.rs", "bytes": 6998 }
   ],
   "lines": { "evaluated": true, "lines": 1234, "text_files": 10, "binary_files": 1, "unreadable_files": 0 },
+  "git_status": { "evaluated": true, "modified": 2, "staged": 1, "untracked": 3, "ignored": 4 },
+  "git_activity": { "evaluated": true, "window_days": 30, "commits": 12, "by_day": [{ "date": "2026-09-10", "commits": 12 }] },
   "warnings": []
 }
 ```
@@ -177,6 +183,19 @@ fails:
 Every analysis added from `docs/specs/003-repository-intelligence.md` onward
 carries this same shape. See `docs/specs/002-structured-output.md` for the
 full contract.
+
+`git_status` counts paths in each Git status category — `modified`,
+`staged`, `untracked`, and `ignored` — when the root is a Git worktree; a
+path with both staged and further unstaged changes counts in both
+categories, so the four fields are not a partition. `git_activity` reports
+commit counts by day over `--since-days` (default 30), ascending and
+omitting days with no commits. Both report `not evaluated` — never a zero —
+when `--no-git` was passed, when the root is not a Git worktree (including
+a directory with no `.git` at all), or when the repository has no commits
+yet (`git_status` alone still runs in that case). Repo Radar never shells
+out with the scanned path as an argument, never mutates Git state, and
+never reads `git`'s own error text into the report; see
+`docs/specs/000-safety-invariants.md` invariants I2, I3, and I4.
 
 Pipeline examples:
 

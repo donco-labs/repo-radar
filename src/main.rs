@@ -16,6 +16,8 @@ struct Options {
     top: usize,
     format: OutputFormat,
     count_lines: bool,
+    read_git: bool,
+    since_days: u32,
 }
 
 impl Default for Options {
@@ -25,6 +27,8 @@ impl Default for Options {
             top: 10,
             format: OutputFormat::Text,
             count_lines: true,
+            read_git: true,
+            since_days: 30,
         }
     }
 }
@@ -51,6 +55,8 @@ fn main() {
 
     let config = ScanConfig {
         count_lines: options.count_lines,
+        read_git: options.read_git,
+        activity_window_days: options.since_days,
         ..ScanConfig::default()
     };
     match scan(&options.root, &config) {
@@ -109,6 +115,17 @@ fn parse_arguments(arguments: &[String]) -> Result<Options, String> {
                 options.count_lines = false;
                 index += 1;
             }
+            "--no-git" => {
+                options.read_git = false;
+                index += 1;
+            }
+            "--since-days" => {
+                let value = take_value(arguments, index, "--since-days")?;
+                options.since_days = value.parse().map_err(|_| {
+                    format!("invalid value '{value}' for --since-days, expected a number")
+                })?;
+                index += 2;
+            }
             other if other.starts_with('-') => {
                 return Err(format!("unknown flag '{other}'"));
             }
@@ -150,6 +167,8 @@ Options:
                                                 Output format (default: text; html is a standalone dashboard)
   --top N               Number of largest files to list (default: 10)
   --no-lines            Skip line counting (faster; lines report as not evaluated)
+  --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
+  --since-days N        Days back the commit activity window covers (default: 30)
   -h, --help            Print this help and exit
 
 Exit status:
@@ -177,6 +196,8 @@ mod tests {
         assert_eq!(options.top, 10);
         assert_eq!(options.format, OutputFormat::Text);
         assert!(options.count_lines);
+        assert!(options.read_git);
+        assert_eq!(options.since_days, 30);
     }
 
     #[test]
@@ -184,6 +205,33 @@ mod tests {
         let options = parse_arguments(&arguments(&["--no-lines"])).unwrap();
 
         assert!(!options.count_lines);
+    }
+
+    #[test]
+    fn no_git_flag_disables_git_analyses() {
+        let options = parse_arguments(&arguments(&["--no-git"])).unwrap();
+
+        assert!(!options.read_git);
+    }
+
+    #[test]
+    fn since_days_flag_sets_the_activity_window() {
+        let options = parse_arguments(&arguments(&["--since-days", "7"])).unwrap();
+
+        assert_eq!(options.since_days, 7);
+    }
+
+    #[test]
+    fn since_days_zero_is_legal_and_means_today_only() {
+        let options = parse_arguments(&arguments(&["--since-days", "0"])).unwrap();
+
+        assert_eq!(options.since_days, 0);
+    }
+
+    #[test]
+    fn since_days_rejects_a_non_numeric_value() {
+        assert!(parse_arguments(&arguments(&["--since-days", "many"])).is_err());
+        assert!(parse_arguments(&arguments(&["--since-days"])).is_err());
     }
 
     #[test]

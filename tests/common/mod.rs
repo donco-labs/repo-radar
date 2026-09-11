@@ -327,3 +327,91 @@ pub fn git_fixture() -> Option<Fixture> {
 
     Some(fixture)
 }
+
+/// Builds a Git repository with one commit, then a modified tracked file, an
+/// untracked file, and a `.gitignore` rule covering an ignored path — one
+/// entry in every `GitStatus` category except `staged`.
+///
+/// `.gitignore` and the path it covers are committed as part of the initial
+/// commit, so the only uncommitted state is the modification and the
+/// untracked file this function adds afterward; a caller counting exactly
+/// one modified and one untracked entry is counting the whole story.
+///
+/// Returns `None` when Git is unavailable or any step fails.
+pub fn git_fixture_with_changes() -> Option<Fixture> {
+    let fixture = Fixture::typical();
+    fixture
+        .file(".gitignore", b"ignored-dir/\n")
+        .file("ignored-dir/file.rs", b"ignored\n");
+
+    let steps: [&[&str]; 3] = [
+        &["init", "--initial-branch=main"],
+        &["add", "."],
+        &["commit", "-m", "fixture commit", "--no-gpg-sign"],
+    ];
+    for step in steps {
+        let output = git(&fixture.root, step)?;
+        if !output.status.success() {
+            return None;
+        }
+    }
+
+    // Modified: rewrite a tracked file's content.
+    fixture.file("src/main.rs", b"fn main() { /* modified */ }\n");
+    // Untracked: a new file Git has never tracked or ignored.
+    fixture.file("untracked.rs", b"fn untracked() {}\n");
+
+    Some(fixture)
+}
+
+/// Builds a Git repository with no commits at all: `git init` and nothing
+/// else. Exercises the "worktree exists, but `HEAD` does not" path that
+/// `git log` itself reports by exiting 128 with a localized message.
+///
+/// Returns `None` when Git is unavailable or `init` fails.
+pub fn git_fixture_empty() -> Option<Fixture> {
+    let fixture = Fixture::new();
+    let output = git(&fixture.root, &["init", "--initial-branch=main"])?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(fixture)
+}
+
+/// Builds a Git repository whose own `.git/config` sets `core.fsmonitor` to
+/// a script that writes `canary` — a path outside the scanned root — on
+/// `git status`. Used to prove invariant I3 holds even against a hostile
+/// repository's own configuration: `-c core.fsmonitor=false` on every
+/// invocation must stop this from ever running.
+///
+/// Unix-only: the payload is a shebang script that needs the execute bit,
+/// which has no portable equivalent to construct on Windows.
+///
+/// Returns `None` when Git is unavailable or any step fails.
+#[cfg(unix)]
+pub fn git_fixture_hostile_fsmonitor(canary: &Path) -> Option<Fixture> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = git_fixture()?;
+
+    let script = fixture.path("evil.sh");
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\ntouch '{canary}'\nprintf 'PWNED-fsmonitor-executed\\n'\n",
+            canary = canary.display()
+        ),
+    )
+    .ok()?;
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).ok()?;
+
+    // Set directly in `.git/config`, matching what a hostile clone's own
+    // configuration looks like — nothing here is something Repo Radar's own
+    // invocation would ever write.
+    let config_path = fixture.path(".git/config");
+    let mut config = fs::read_to_string(&config_path).ok()?;
+    config.push_str("[core]\n\tfsmonitor = ./evil.sh\n");
+    fs::write(&config_path, config).ok()?;
+
+    Some(fixture)
+}

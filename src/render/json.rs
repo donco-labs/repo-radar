@@ -7,7 +7,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::{
-    Analysis, DirectoryEntry, FileEntry, LanguageStat, LineCounts, ScanReport, ScanWarning,
+    Analysis, DirectoryEntry, FileEntry, GitActivity, GitStatus, LanguageStat, LineCounts,
+    ScanReport, ScanWarning,
 };
 
 #[derive(Serialize)]
@@ -22,6 +23,8 @@ struct JsonReport<'a> {
     largest_files: &'a [FileEntry],
     largest_directories: &'a [DirectoryEntry],
     lines: &'a Analysis<LineCounts>,
+    git_status: &'a Analysis<GitStatus>,
+    git_activity: &'a Analysis<GitActivity>,
     warnings: &'a [ScanWarning],
 }
 
@@ -41,6 +44,8 @@ pub fn write_json(out: &mut impl fmt::Write, root: &Path, report: &ScanReport) -
         largest_files: &report.largest_files,
         largest_directories: &report.largest_directories,
         lines: &report.lines,
+        git_status: &report.git_status,
+        git_activity: &report.git_activity,
         warnings: &report.warnings,
     };
     // Every field is an owned, string-keyed, float-free value, so the only way
@@ -78,6 +83,8 @@ mod tests {
             "largest_files",
             "largest_directories",
             "lines",
+            "git_status",
+            "git_activity",
             "warnings",
         ] {
             assert!(value.get(field).is_some(), "missing field '{field}'");

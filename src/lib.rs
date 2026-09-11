@@ -19,9 +19,11 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+pub mod analysis;
 mod languages;
 pub mod render;
 
+pub use analysis::git::{DayCount, GitActivity, GitStatus};
 pub use languages::LANGUAGE_TABLE_VERSION;
 
 /// What a scan does and does not look at.
@@ -32,6 +34,10 @@ pub struct ScanConfig {
     pub ignored_directories: Vec<String>,
     /// Read file contents to count lines. Defaults to true.
     pub count_lines: bool,
+    /// Run the Git analyses. Defaults to true.
+    pub read_git: bool,
+    /// Days back the activity window covers. Defaults to 30.
+    pub activity_window_days: u32,
 }
 
 impl Default for ScanConfig {
@@ -42,6 +48,8 @@ impl Default for ScanConfig {
                 .map(str::to_owned)
                 .collect(),
             count_lines: true,
+            read_git: true,
+            activity_window_days: 30,
         }
     }
 }
@@ -249,6 +257,10 @@ pub struct ScanReport {
     pub largest_directories: Vec<DirectoryEntry>,
     /// Line-counting results, or why they were not produced.
     pub lines: Analysis<LineCounts>,
+    /// Git status counts, or why they were not produced.
+    pub git_status: Analysis<GitStatus>,
+    /// Recent commit activity, or why it was not produced.
+    pub git_activity: Analysis<GitActivity>,
     /// Non-fatal problems encountered while scanning.
     pub warnings: Vec<ScanWarning>,
 }
@@ -329,6 +341,8 @@ pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
     } else {
         Analysis::NotEvaluated(NotEvaluated::Disabled)
     };
+
+    (report.git_status, report.git_activity) = analysis::git::analyze(root, config);
 
     report.largest_files.sort_by(|left, right| {
         right
