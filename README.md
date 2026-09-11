@@ -64,7 +64,7 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 
 ### Requirements
 
-- Rust stable, edition 2024 (Rust 1.85 or newer). Install with [rustup](https://rustup.rs).
+- Rust stable, edition 2024 (Rust 1.88 or newer — the crate uses let-chains, stabilized in 1.88). Install with [rustup](https://rustup.rs).
 
 ### Install
 
@@ -157,9 +157,26 @@ repo-radar . --format json --top 2
     { "path": "src/lib.rs", "bytes": 7700 },
     { "path": "src/main.rs", "bytes": 6998 }
   ],
+  "lines": { "evaluated": true, "lines": 1234, "text_files": 10, "binary_files": 1, "unreadable_files": 0 },
   "warnings": []
 }
 ```
+
+`lines` is an *analysis*: a fact that may not have been able to run. `evaluated`
+is always present and says whether it did. When it is `false` (`--no-lines`
+was passed, for example), the object also carries a `reason` — one of
+`disabled`, `input_unavailable`, `unsupported`, or `failed` — and, when the
+reason names a specific input, a `detail` string. `lines`' own fields stay
+present at their zero values either way, so a consumer's field access never
+fails:
+
+```json
+"lines": { "evaluated": false, "reason": "disabled", "lines": 0, "text_files": 0, "binary_files": 0, "unreadable_files": 0 }
+```
+
+Every analysis added from `docs/specs/003-repository-intelligence.md` onward
+carries this same shape. See `docs/specs/002-structured-output.md` for the
+full contract.
 
 Pipeline examples:
 

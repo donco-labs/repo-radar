@@ -20,16 +20,20 @@ use super::format_bytes;
 /// to this file, so the path is just the sibling file name.
 const STYLE: &str = include_str!("style.css");
 
+/// Writes the standalone HTML dashboard for `report`.
+///
+/// Every value drawn from repository content is escaped through [`Html`]
+/// before it reaches the page (invariant I4); the document otherwise
+/// mirrors the same [`ScanReport`] the text and JSON renderers consume.
 pub fn write_html(out: &mut impl fmt::Write, root: &Path, report: &ScanReport) -> fmt::Result {
     write!(out, "{}", document(root, report))
 }
 
 fn document(root: &Path, report: &ScanReport) -> Html {
     let repository = Html::escape(&display_path(root));
-    let lines_stat = if report.lines.evaluated {
-        Html::number(report.lines.lines)
-    } else {
-        Html::from_static("not evaluated")
+    let lines_stat = match report.lines.ran() {
+        Some(line_counts) => Html::number(line_counts.lines),
+        None => Html::from_static("not evaluated"),
     };
 
     let mut html = Html::default();
@@ -129,6 +133,8 @@ fn document(root: &Path, report: &ScanReport) -> Html {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::*;
     use crate::FileEntry;
     use std::path::PathBuf;

@@ -1,3 +1,16 @@
+//! Repo Radar's scan engine and reporting model.
+//!
+//! This crate reads a repository and produces a [`ScanReport`]: it never
+//! writes into the tree it scans, never mutates Git state, and never
+//! executes anything found in it. `docs/specs/000-safety-invariants.md`
+//! states the full set of guarantees and outranks every other document in
+//! this repository, including `SPEC.md`.
+
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+#![warn(clippy::unwrap_used, clippy::expect_used)]
+#![warn(clippy::todo, clippy::unimplemented)]
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
@@ -11,8 +24,11 @@ pub mod render;
 
 pub use languages::LANGUAGE_TABLE_VERSION;
 
+/// What a scan does and does not look at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScanConfig {
+    /// Directory names — not paths — skipped entirely during traversal.
+    /// The default set is `.git`, `target`, and `node_modules`.
     pub ignored_directories: Vec<String>,
     /// Read file contents to count lines. Defaults to true.
     pub count_lines: bool,
@@ -30,57 +46,210 @@ impl Default for ScanConfig {
     }
 }
 
+/// A single counted file: its repository-relative path and size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileEntry {
+    /// Repository-relative.
     pub path: PathBuf,
+    /// File size in bytes, as reported by `stat`.
     pub bytes: u64,
 }
 
+/// Aggregate totals for one language, as determined by file extension.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LanguageStat {
+    /// The language name, or `[no extension]` / `[unrecognized]` for files
+    /// the extension table does not map.
     pub language: String,
+    /// File count contributing to this language.
     pub files: usize,
+    /// Byte total across those files.
     pub bytes: u64,
     /// Zero when line counting was disabled or the files were binary.
     pub lines: u64,
 }
 
+/// Aggregate totals for one directory, including every descendant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DirectoryEntry {
     /// Repository-relative. Never the root.
     pub path: PathBuf,
     /// Aggregate over the directory and all its descendants.
     pub files: usize,
+    /// Aggregate over the directory and all its descendants.
     pub bytes: u64,
 }
 
-/// Line counting results, and whether the analysis ran at all.
+/// The result of an analysis that may not have been able to run.
+///
+/// Invariant I10 requires that an analysis which did not run reports
+/// `not evaluated` rather than a plausible default. Making that a type rather
+/// than a convention means a caller cannot render a zero where it meant
+/// "unknown" — there is no zero to reach for, because there is no `T`.
+///
+/// ```
+/// use repo_radar::{Analysis, NotEvaluated};
+///
+/// let ran: Analysis<u64> = Analysis::Ran(42);
+/// assert_eq!(ran.ran(), Some(&42));
+///
+/// let skipped: Analysis<u64> = Analysis::NotEvaluated(NotEvaluated::Disabled);
+/// assert_eq!(skipped.ran(), None);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Analysis<T> {
+    /// The analysis ran and produced this result.
+    Ran(T),
+    /// The analysis did not run, for the stated reason.
+    NotEvaluated(NotEvaluated),
+}
+
+/// Why an analysis did not run.
+///
+/// The four variants are the four things a user needs told apart. Collapsing
+/// them into a single "unavailable" would put "you switched this off" and "we
+/// tried to read this and failed" in the same bucket.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotEvaluated {
+    /// Switched off for this invocation, e.g. `--no-lines`.
+    Disabled,
+    /// The input does not exist here, e.g. not a Git worktree.
+    InputUnavailable(String),
+    /// Recognized but not implemented, e.g. an unimplemented agent adapter.
+    Unsupported(String),
+    /// The input existed and could not be understood.
+    Failed(String),
+}
+
+impl<T> Default for Analysis<T> {
+    fn default() -> Self {
+        Self::NotEvaluated(NotEvaluated::Disabled)
+    }
+}
+
+impl<T> Analysis<T> {
+    /// The result, or `None` if the analysis did not run.
+    pub fn ran(&self) -> Option<&T> {
+        match self {
+            Self::Ran(value) => Some(value),
+            Self::NotEvaluated(_) => None,
+        }
+    }
+}
+
+impl NotEvaluated {
+    /// The stable wire token for this reason: `disabled`,
+    /// `input_unavailable`, `unsupported`, or `failed`.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::InputUnavailable(_) => "input_unavailable",
+            Self::Unsupported(_) => "unsupported",
+            Self::Failed(_) => "failed",
+        }
+    }
+
+    /// The specific input this reason names, when it names one.
+    /// `Disabled` carries none.
+    pub fn detail(&self) -> Option<&str> {
+        match self {
+            Self::Disabled => None,
+            Self::InputUnavailable(detail) | Self::Unsupported(detail) | Self::Failed(detail) => {
+                Some(detail)
+            }
+        }
+    }
+}
+
+/// Serializes as `{ "evaluated": bool, "reason"?: ..., "detail"?: ..., ...T's
+/// own fields }`, per `docs/specs/002-structured-output.md`.
+///
+/// `#[serde(flatten)]` requires `T` to serialize as a map; every analysis
+/// result in this crate is a struct, so that holds.
+impl<T: Serialize + Default> Serialize for Analysis<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Wire<'a, T: Serialize> {
+            evaluated: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reason: Option<&'static str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            detail: Option<&'a str>,
+            #[serde(flatten)]
+            value: &'a T,
+        }
+
+        // A `NotEvaluated` analysis has no `T`, but the version 1 contract
+        // requires the object keep its full field shape so a consumer's field
+        // access never fails. The zero value stands in, and `evaluated: false`
+        // is what marks those zeros as something other than measurements.
+        let fallback;
+        let wire = match self {
+            Self::Ran(value) => Wire {
+                evaluated: true,
+                reason: None,
+                detail: None,
+                value,
+            },
+            Self::NotEvaluated(not_evaluated) => {
+                fallback = T::default();
+                Wire {
+                    evaluated: false,
+                    reason: Some(not_evaluated.reason()),
+                    detail: not_evaluated.detail(),
+                    value: &fallback,
+                }
+            }
+        };
+        wire.serialize(serializer)
+    }
+}
+
+/// Line counting results.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LineCounts {
-    /// False when `--no-lines` was passed. Surfaces must then say
-    /// "not evaluated" rather than rendering zero (invariant I10).
-    pub evaluated: bool,
+    /// Total lines across all text files.
     pub lines: u64,
+    /// Files read as text.
     pub text_files: usize,
+    /// Files skipped as binary by the NUL-byte heuristic.
     pub binary_files: usize,
+    /// Files that stat succeeded on but could not be opened.
     pub unreadable_files: usize,
 }
 
+/// A non-fatal problem encountered while scanning, e.g. a directory entry
+/// that could not be read or a file that disappeared mid-scan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ScanWarning {
+    /// The path the problem occurred on.
     pub path: PathBuf,
+    /// The underlying error, as text.
     pub message: String,
 }
 
+/// The full result of a scan: every fact `repo-radar` has about the
+/// repository, in the shape every surface (text, JSON, HTML, `serve`, the
+/// TUI) renders from.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ScanReport {
+    /// Total files counted.
     pub files: usize,
+    /// Total bytes across all counted files.
     pub bytes: u64,
+    /// File count by extension, lower-cased.
     pub by_extension: BTreeMap<String, usize>,
+    /// Aggregate totals by language, sorted by bytes descending.
     pub by_language: Vec<LanguageStat>,
+    /// The largest files, sorted by bytes descending.
     pub largest_files: Vec<FileEntry>,
+    /// The largest directories by aggregate bytes descending. The
+    /// repository root is excluded, since it is trivially first and every
+    /// scan has one.
     pub largest_directories: Vec<DirectoryEntry>,
-    pub lines: LineCounts,
+    /// Line-counting results, or why they were not produced.
+    pub lines: Analysis<LineCounts>,
+    /// Non-fatal problems encountered while scanning.
     pub warnings: Vec<ScanWarning>,
 }
 
@@ -114,6 +283,23 @@ pub fn display_path(path: &Path) -> String {
     sanitize_for_terminal(&path.to_string_lossy())
 }
 
+/// Scans `root` and produces a [`ScanReport`].
+///
+/// Traversal never follows symlinks and never leaves `root` (invariant I8),
+/// and nothing under `root` is created, modified, deleted, or renamed
+/// (invariant I1) — on any path, including the error paths below.
+///
+/// # Errors
+///
+/// Returns an error if `root` is not a directory.
+///
+/// ```
+/// use repo_radar::{ScanConfig, scan};
+///
+/// let report = scan(std::path::Path::new("."), &ScanConfig::default())
+///     .expect(". should be a directory");
+/// assert!(report.files > 0);
+/// ```
 pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
     if !root.is_dir() {
         return Err(io::Error::new(
@@ -123,9 +309,7 @@ pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
     }
 
     let mut report = ScanReport::default();
-    // Set explicitly: `LineCounts::default()` gives `evaluated: false`, which
-    // would misreport a completed count as skipped.
-    report.lines.evaluated = config.count_lines;
+    let mut line_counts = LineCounts::default();
 
     let mut directories: BTreeMap<PathBuf, DirectoryEntry> = BTreeMap::new();
     let mut languages: BTreeMap<String, LanguageStat> = BTreeMap::new();
@@ -135,9 +319,16 @@ pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
         root,
         config,
         &mut report,
+        &mut line_counts,
         &mut directories,
         &mut languages,
     );
+
+    report.lines = if config.count_lines {
+        Analysis::Ran(line_counts)
+    } else {
+        Analysis::NotEvaluated(NotEvaluated::Disabled)
+    };
 
     report.largest_files.sort_by(|left, right| {
         right
@@ -176,6 +367,7 @@ fn scan_directory(
     directory: &Path,
     config: &ScanConfig,
     report: &mut ScanReport,
+    line_counts: &mut LineCounts,
     directories: &mut BTreeMap<PathBuf, DirectoryEntry>,
     languages: &mut BTreeMap<String, LanguageStat>,
 ) {
@@ -211,7 +403,15 @@ fn scan_directory(
         }
 
         if file_type.is_dir() {
-            scan_directory(root, &path, config, report, directories, languages);
+            scan_directory(
+                root,
+                &path,
+                config,
+                report,
+                line_counts,
+                directories,
+                languages,
+            );
             continue;
         }
 
@@ -241,15 +441,15 @@ fn scan_directory(
         if config.count_lines {
             match count_lines(&path) {
                 FileText::Text { lines } => {
-                    report.lines.lines += lines;
-                    report.lines.text_files += 1;
+                    line_counts.lines += lines;
+                    line_counts.text_files += 1;
                     file_lines = lines;
                 }
                 FileText::Binary => {
-                    report.lines.binary_files += 1;
+                    line_counts.binary_files += 1;
                 }
                 FileText::Unreadable => {
-                    report.lines.unreadable_files += 1;
+                    line_counts.unreadable_files += 1;
                     add_warning(
                         report,
                         path.clone(),
@@ -397,6 +597,8 @@ fn should_skip(path: &Path, config: &ScanConfig) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::*;
     use std::fs::{self, File};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -583,10 +785,11 @@ mod tests {
         fs::write(fixture.root.join("data.bin"), b"\x00\x01\x02").unwrap();
 
         let report = scan(&fixture.root, &ScanConfig::default()).unwrap();
+        let line_counts = report.lines.ran().expect("line counting was enabled");
 
-        assert_eq!(report.lines.binary_files, 1);
-        assert_eq!(report.lines.text_files, 0);
-        assert_eq!(report.lines.lines, 0);
+        assert_eq!(line_counts.binary_files, 1);
+        assert_eq!(line_counts.text_files, 0);
+        assert_eq!(line_counts.lines, 0);
     }
 
     #[test]
@@ -622,7 +825,6 @@ mod tests {
 
         let config = ScanConfig::default();
         let mut report = ScanReport::default();
-        report.lines.evaluated = config.count_lines;
         let mut directories = BTreeMap::new();
         let mut languages = BTreeMap::new();
         scan_directory(
@@ -630,6 +832,7 @@ mod tests {
             &fixture.root,
             &config,
             &mut report,
+            &mut LineCounts::default(),
             &mut directories,
             &mut languages,
         );
@@ -724,10 +927,86 @@ mod tests {
         };
         let report = scan(&fixture.root, &config).unwrap();
 
-        assert!(!report.lines.evaluated);
-        assert_eq!(report.lines.lines, 0);
-        assert_eq!(report.lines.text_files, 0);
-        assert_eq!(report.lines.binary_files, 0);
+        assert_eq!(
+            report.lines,
+            Analysis::NotEvaluated(NotEvaluated::Disabled),
+            "a disabled analysis must name its reason, not report a zero"
+        );
+    }
+
+    #[test]
+    fn analysis_that_ran_serializes_its_value_and_no_reason() {
+        let analysis = Analysis::Ran(LineCounts {
+            lines: 7,
+            text_files: 1,
+            ..Default::default()
+        });
+
+        let value = serde_json::to_value(&analysis).expect("Analysis should serialize");
+
+        assert_eq!(value["evaluated"], true);
+        assert_eq!(value["lines"], 7);
+        assert!(
+            value.get("reason").is_none(),
+            "an evaluated analysis must not emit reason"
+        );
+        assert!(
+            value.get("detail").is_none(),
+            "an evaluated analysis must not emit detail"
+        );
+    }
+
+    #[test]
+    fn analysis_that_did_not_run_reports_reason_and_zeroed_fields() {
+        let analysis: Analysis<LineCounts> = Analysis::NotEvaluated(NotEvaluated::Disabled);
+
+        let value = serde_json::to_value(&analysis).expect("Analysis should serialize");
+
+        assert_eq!(value["evaluated"], false);
+        assert_eq!(value["reason"], "disabled");
+        assert_eq!(value["lines"], 0);
+        assert!(value.get("detail").is_none(), "Disabled carries no detail");
+    }
+
+    #[test]
+    fn not_evaluated_detail_names_the_input() {
+        let analysis: Analysis<LineCounts> = Analysis::NotEvaluated(NotEvaluated::Failed(
+            "Cargo.toml is not valid TOML".to_owned(),
+        ));
+
+        let value = serde_json::to_value(&analysis).expect("Analysis should serialize");
+
+        assert_eq!(value["reason"], "failed");
+        assert_eq!(value["detail"], "Cargo.toml is not valid TOML");
+    }
+
+    #[test]
+    fn every_not_evaluated_reason_has_a_distinct_token() {
+        let reasons = [
+            NotEvaluated::Disabled.reason(),
+            NotEvaluated::InputUnavailable(String::new()).reason(),
+            NotEvaluated::Unsupported(String::new()).reason(),
+            NotEvaluated::Failed(String::new()).reason(),
+        ];
+
+        assert_eq!(
+            reasons,
+            ["disabled", "input_unavailable", "unsupported", "failed"]
+        );
+
+        let mut sorted: Vec<&str> = reasons.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            reasons.len(),
+            "reason tokens must all be distinct"
+        );
+    }
+
+    #[test]
+    fn default_analysis_has_not_run() {
+        assert!(Analysis::<LineCounts>::default().ran().is_none());
     }
 
     // Test 12 from the build sheet, `unreadable_file_warns_and_counts_without_aborting`,
@@ -758,7 +1037,8 @@ mod tests {
 
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).ok();
 
-        assert_eq!(report.lines.unreadable_files, 1);
+        let line_counts = report.lines.ran().expect("line counting was enabled");
+        assert_eq!(line_counts.unreadable_files, 1);
         assert!(
             report.warnings.iter().any(|warning| warning.path == path),
             "an unreadable file must be named in a warning, not silently skipped"

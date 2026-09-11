@@ -53,10 +53,12 @@ impl Html {
         self.0.push_str(&Html::escape(text).0);
     }
 
+    /// The rendered markup, already escaped where it needed to be.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// True when no markup has been appended yet.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -70,6 +72,8 @@ impl fmt::Display for Html {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use super::*;
 
     #[test]
