@@ -10,6 +10,9 @@ use std::path::Path;
 
 use common::{Fixture, TreeDigest, assert_target_unchanged, git, git_fixture, run};
 
+#[cfg(unix)]
+use common::git_fixture_hostile_fsmonitor;
+
 /// Every invocation a user could plausibly make, including invalid ones.
 ///
 /// Failure paths are covered deliberately: a command that cleans up after
@@ -29,9 +32,14 @@ fn every_invocation(root: &str) -> Vec<Vec<String>> {
         // default run and a `--no-lines` run are the change most likely to
         // touch access times or otherwise disturb the tree (spec 003, AC7).
         owned(&[root, "--no-lines"]),
+        // The Git analyses run by default; this parcel's own commands.
+        owned(&[root, "--no-git"]),
+        owned(&[root, "--since-days", "0"]),
+        owned(&[root, "--since-days", "365"]),
         owned(&["--help"]),
         owned(&[root, "--format", "yaml"]),
         owned(&[root, "--top", "not-a-number"]),
+        owned(&[root, "--since-days", "not-a-number"]),
         owned(&[root, "--unknown-flag"]),
         owned(&[root, "extra-path"]),
         owned(&["definitely-not-a-directory"]),
@@ -89,6 +97,19 @@ fn i1_holds_for_a_read_only_directory() {
     );
 }
 
+/// Rewrites a tracked file with identical content but a newer mtime: a
+/// stale index entry, the shape that makes `git status` do real comparison
+/// work against the working tree rather than trusting cached stat data.
+/// Every invocation in [`every_invocation`] runs with the Git analyses
+/// enabled by default, so this is what gives `i2_git_state_is_never_mutated`
+/// something to fail on if `--no-optional-locks` is ever dropped.
+fn make_index_stale(fixture: &Fixture) {
+    let path = fixture.path("src/main.rs");
+    let contents = fs::read(&path).expect("fixture file should be readable");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(&path, &contents).expect("fixture file should be rewritable with identical bytes");
+}
+
 #[test]
 fn i2_git_state_is_never_mutated() {
     let Some(fixture) = git_fixture() else {
@@ -97,6 +118,10 @@ fn i2_git_state_is_never_mutated() {
     };
     let root = fixture.root.display().to_string();
     let git_dir = fixture.path(".git");
+
+    // Every invocation below runs with the Git analyses enabled (the
+    // default): this is the test parcel 4b's `analyze` must pass under.
+    make_index_stale(&fixture);
 
     for arguments in every_invocation(&root) {
         let borrowed: Vec<&str> = arguments.iter().map(String::as_str).collect();
@@ -139,6 +164,47 @@ fn i2_head_and_index_survive_a_scan() {
         status_after.stdout.is_empty(),
         "a scan must not dirty the working tree"
     );
+}
+
+/// I3: a hostile repository's own `.git/config` must not get to execute
+/// code via `core.fsmonitor` during `git status`. This is the test that
+/// matters most in this file: it is a verified, working exploit, not a
+/// hypothetical one, and it is only blocked because every invocation in
+/// `src/analysis/git.rs` carries `-c core.fsmonitor=false` ahead of the
+/// subcommand, overriding the repository's own setting.
+#[cfg(unix)]
+#[test]
+fn i3_hostile_fsmonitor_config_is_not_executed() {
+    let canary = std::env::temp_dir().join(format!(
+        "repo-radar-canary-i3-fsmonitor-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_file(&canary);
+
+    let Some(fixture) = git_fixture_hostile_fsmonitor(&canary) else {
+        eprintln!("skipping: git is unavailable");
+        return;
+    };
+    let root = fixture.root.display().to_string();
+
+    assert_target_unchanged(
+        &fixture.root,
+        "scan of a hostile core.fsmonitor config",
+        || {
+            let output = run(&[&root, "--format", "json"]);
+            assert!(
+                output.status.success(),
+                "the report must still render even though the config is hostile"
+            );
+        },
+    );
+
+    assert!(
+        !canary.exists(),
+        "the repository's own core.fsmonitor config executed a command during \
+         a scan (spec 000, invariant I3)"
+    );
+    let _ = fs::remove_file(&canary);
 }
 
 /// I4: hostile repository content must not escape into the shell or the tree.
@@ -207,6 +273,46 @@ fn i4_control_sequences_do_not_reach_the_terminal() {
         assert!(
             !stdout.contains(forbidden),
             "control character {forbidden:?} reached stdout (spec 000, invariant I4)"
+        );
+    }
+}
+
+/// I4, for the Git parcel: the build sheet asked for a hostile *branch*
+/// name, but Git's own ref validation rejects one — verified empirically,
+/// `git init --initial-branch` containing an ESC byte exits 128 with
+/// `fatal: invalid initial branch name`, so that fixture cannot exist. This
+/// parcel also never reads branch names at all (out of scope until spec
+/// 013), so there is no code path for one to reach output regardless. The
+/// nearest real vector into this parcel's own behavior is an untracked file
+/// name inside a Git-enabled scan: `GitStatus` counts it but never names it
+/// (see the doc comment on `GitStatus`), and the rest of the report must
+/// still hold I4 the same way it does outside a Git repository.
+#[test]
+fn i4_hostile_filename_in_a_git_repository_does_not_reach_output_unsanitized() {
+    let Some(fixture) = git_fixture() else {
+        eprintln!("skipping: git is unavailable");
+        return;
+    };
+    let hostile = "src/evil\u{1b}[31m\u{7}name.rs";
+
+    if fs::write(fixture.root.join(hostile), b"x").is_err() {
+        eprintln!("skipping: filesystem rejected the hostile name");
+        return;
+    }
+
+    let output = run(&[&fixture.root.display().to_string(), "--format", "text"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("name.rs"),
+        "the file must still be reported"
+    );
+    for forbidden in ['\u{1b}', '\u{7}'] {
+        assert!(
+            !stdout.contains(forbidden),
+            "control character {forbidden:?} reached stdout from a Git-enabled scan \
+             (spec 000, invariant I4)"
         );
     }
 }
@@ -286,6 +392,28 @@ fn i8_symlinks_are_not_followed_out_of_the_root() {
         !report.contains("secret.rs"),
         "traversal followed a symlink out of the root (spec 000, invariant I8)"
     );
+}
+
+/// Spec 003, acceptance criterion 4: a non-Git directory still produces a
+/// successful, complete report. Every Git failure degrades to
+/// `NotEvaluated` rather than aborting the scan.
+#[test]
+fn non_git_directory_still_produces_a_report() {
+    let fixture = Fixture::typical();
+    let root = fixture.root.display().to_string();
+
+    let output = run(&[&root, "--format", "json"]);
+
+    assert!(
+        output.status.success(),
+        "a non-Git directory must still exit 0 with a complete report (spec 003, AC 4)"
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(report["git_status"]["evaluated"], false);
+    assert_eq!(report["git_status"]["reason"], "input_unavailable");
+    assert_eq!(report["git_activity"]["evaluated"], false);
+    assert_eq!(report["git_activity"]["reason"], "input_unavailable");
 }
 
 #[test]
@@ -445,4 +573,68 @@ fn i5_writes_land_outside_the_target() {
             run(&borrowed);
         }
     });
+}
+
+/// Spec 003, AC 3: Git analysis never shells out with user-controlled
+/// arguments, and repository paths are passed safely.
+///
+/// The repository root is attacker-influenced in practice — a user clones
+/// whatever name a hostile project chose. This scans a Git repository whose
+/// directory name carries shell metacharacters and a command substitution
+/// that would create a canary outside the root. `Command` passes an argv
+/// straight to `execve` with no shell, and the root reaches Git through
+/// `current_dir` rather than an argv element, so the name stays inert data.
+///
+/// The Git analysis is asserted to have actually run: a test where Git
+/// silently failed would pass for the wrong reason and prove nothing.
+#[test]
+fn i4_shell_metacharacters_in_the_repository_path_are_inert() {
+    let fixture = Fixture::new();
+    let canary = fixture.root.join("CANARY");
+
+    let hostile = fixture
+        .root
+        .join("repo $(touch ../CANARY) `touch ../CANARY` ; touch ../CANARY");
+    if fs::create_dir_all(&hostile).is_err() {
+        eprintln!("skipping: the filesystem rejected the hostile directory name");
+        return;
+    }
+    fixture.file("repo-marker.rs", b"fn main() {}\n");
+    fs::write(hostile.join("src.rs"), b"pub fn work() {}\n")
+        .expect("fixture file should be written");
+
+    let steps: [&[&str]; 3] = [
+        &["init", "--initial-branch=main"],
+        &["add", "."],
+        &["commit", "-m", "hostile path fixture", "--no-gpg-sign"],
+    ];
+    for step in steps {
+        let Some(output) = git(&hostile, step) else {
+            eprintln!("skipping: git is unavailable");
+            return;
+        };
+        if !output.status.success() {
+            eprintln!("skipping: git could not initialize the hostile-path fixture");
+            return;
+        }
+    }
+
+    let root = hostile.display().to_string();
+    let output = run(&[&root, "--format", "json"]);
+
+    assert!(
+        output.status.success(),
+        "a repository whose path contains shell metacharacters must still scan"
+    );
+    assert!(
+        !canary.exists(),
+        "a repository path was interpreted by a shell (spec 000, invariant I4; spec 003, AC 3)"
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(
+        report["git_status"]["evaluated"], true,
+        "the Git analysis must actually have run, or this test proves nothing"
+    );
 }

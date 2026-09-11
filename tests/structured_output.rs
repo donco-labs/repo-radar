@@ -2,6 +2,10 @@ use std::process::Command;
 
 use serde_json::Value;
 
+mod common;
+
+use common::{git_fixture_empty, git_fixture_with_changes, run};
+
 #[test]
 fn json_output_is_machine_readable_and_honors_top_zero() {
     let output = Command::new(env!("CARGO_BIN_EXE_repo-radar"))
@@ -87,4 +91,73 @@ fn html_output_is_a_self_contained_dashboard() {
     assert!(html.contains("no external assets or requests"));
     assert!(!html.contains("<script"));
     assert!(!html.contains("https://"));
+}
+
+#[test]
+fn git_analyses_report_counts_in_json() {
+    let Some(fixture) = git_fixture_with_changes() else {
+        eprintln!("skipping: git is unavailable");
+        return;
+    };
+    let root = fixture.root.display().to_string();
+
+    let output = run(&[&root, "--format", "json"]);
+    assert!(output.status.success());
+
+    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(report["git_status"]["evaluated"], true);
+    assert_eq!(report["git_status"]["modified"], 1);
+    assert_eq!(report["git_status"]["staged"], 0);
+    assert_eq!(report["git_status"]["untracked"], 1);
+    assert_eq!(report["git_status"]["ignored"], 1);
+}
+
+#[test]
+fn no_git_flag_reports_not_evaluated() {
+    let Some(fixture) = git_fixture_with_changes() else {
+        eprintln!("skipping: git is unavailable");
+        return;
+    };
+    let root = fixture.root.display().to_string();
+
+    let output = run(&[&root, "--format", "json", "--no-git"]);
+    assert!(output.status.success());
+
+    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    for analysis in ["git_status", "git_activity"] {
+        assert_eq!(
+            report[analysis]["evaluated"], false,
+            "{analysis} must say it was not evaluated"
+        );
+        assert_eq!(report[analysis]["reason"], "disabled");
+    }
+    assert_eq!(report["git_status"]["modified"], 0);
+    assert_eq!(report["git_status"]["staged"], 0);
+    assert_eq!(report["git_status"]["untracked"], 0);
+    assert_eq!(report["git_status"]["ignored"], 0);
+    assert_eq!(report["git_activity"]["commits"], 0);
+    assert_eq!(
+        report["git_activity"]["by_day"].as_array().unwrap().len(),
+        0
+    );
+}
+
+#[test]
+fn empty_repository_reports_status_but_not_activity() {
+    let Some(fixture) = git_fixture_empty() else {
+        eprintln!("skipping: git is unavailable");
+        return;
+    };
+    let root = fixture.root.display().to_string();
+
+    let output = run(&[&root, "--format", "json"]);
+    assert!(output.status.success());
+
+    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(
+        report["git_status"]["evaluated"], true,
+        "status must run even before the first commit"
+    );
+    assert_eq!(report["git_activity"]["evaluated"], false);
+    assert_eq!(report["git_activity"]["reason"], "input_unavailable");
 }
