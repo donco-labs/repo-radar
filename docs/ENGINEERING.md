@@ -17,10 +17,10 @@ The intended end state is that most of this file is machine-checked by [025 prac
 | `clippy -D warnings`, all targets, all features | **Enforced** | green bar + CI |
 | Tests pass | **Enforced** | green bar + CI |
 | Target repository is never modified | **Enforced** | `tests/safety_invariants.rs` |
-| No `unsafe` | **Committed** | needs `#![forbid(unsafe_code)]` |
-| MSRV declared | **Committed** | needs `rust-version` in `Cargo.toml` |
-| Public API documented | **Committed** | needs `#![warn(missing_docs)]` |
-| No `unwrap`/`expect` outside tests | **Committed** | needs a clippy lint entry |
+| No `unsafe` | **Enforced** | green bar + CI: `#![forbid(unsafe_code)]` |
+| MSRV declared | **Enforced** | green bar + CI: `rust-version` in `Cargo.toml`, checked by the `msrv` job |
+| Public API documented | **Enforced** | green bar + CI: `#![warn(missing_docs)]` |
+| No `unwrap`/`expect` outside tests | **Enforced** | green bar + CI: `#![warn(clippy::unwrap_used, clippy::expect_used)]` |
 | Module size and coupling limits | **Aspirational** | 025, once it exists |
 | Public API surface stays minimal | **Aspirational** | 025, once it exists |
 
