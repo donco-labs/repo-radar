@@ -4,4 +4,5 @@
 //! result, or it names why it did not, rather than standing in a plausible
 //! zero (invariant I10, `docs/specs/000-safety-invariants.md`).
 
+pub mod cargo;
 pub mod git;

@@ -167,7 +167,9 @@ Rules:
 
 ## Dependencies
 
-The crate runs on `serde` and `serde_json`. [024](specs/024-view-layer.md) adds Dioxus, on a separate compile target, to a separate crate.
+The crate runs on `serde`, `serde_json`, and `toml`. [024](specs/024-view-layer.md) adds Dioxus, on a separate compile target, to a separate crate.
+
+`toml` was added in [parcel 4c](specs/003-repository-intelligence.md) to read `Cargo.toml` and `Cargo.lock`. Measured against this tree, not a scratch project: 9 new transitive crates, a lockfile going from 12 to 21 packages. Considered and declined: hand-rolling a TOML subset (78% of a 290-manifest sample used the `[dependencies.NAME]` table form alone, and another 26% used `[target.'cfg(...)'.dependencies]` — supporting both is most of a parser); `cargo metadata` (resolves dependencies and can reach the network and run build scripts — I3 and I6 broken in one subprocess, not revisited); `cargo_toml`/`cargo-lock` (each carries `toml` underneath anyway). The parser's own error types turned out to have two independent leak channels — `Display` and, less obviously, `Error::message()` — both of which quote repository content back; see the Clarifications in spec 003 and `src/analysis/cargo.rs`'s module doc for the measured detail. Pinned at `"1"`, matching `serde` and `serde_json`.
 
 A new dependency requires the spec or build sheet that authorizes it to say so explicitly, and to say what was considered instead. This is not asceticism — it is that every dependency is a supply-chain surface on a tool whose entire pitch is being safe to run on code you have not read.
 

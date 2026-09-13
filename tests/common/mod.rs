@@ -274,6 +274,40 @@ impl Fixture {
     }
 }
 
+/// A fixture whose `Cargo.toml` is syntactically invalid TOML: an
+/// unterminated value carrying a live ANSI escape sequence and a
+/// fake-secret-shaped string, matching the hostile manifest in the parcel
+/// 4c build sheet. Used to prove `toml::de::Error`'s `Display` — which
+/// echoes this exact line back, escape byte and all — never reaches the
+/// report (spec 000, invariant I4).
+pub fn cargo_fixture_malformed() -> Fixture {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"ok\"\nevil = \x1b[31mAPI_KEY_sk_live_abc123 unterminated\n",
+    );
+    fixture
+}
+
+/// A fixture declaring a dependency whose name contains an ANSI escape
+/// sequence. Dependency names are untrusted manifest content the same way a
+/// file name is; used to prove the text and HTML renderers sanitize them
+/// (spec 000, invariant I4).
+///
+/// The escape is written as TOML's own Unicode string escape, not a raw
+/// control byte: a basic string may not contain an unescaped control
+/// character, so a raw byte here would make the manifest itself invalid
+/// TOML rather than a validly-parsed hostile name. TOML decodes the escape
+/// into an actual U+001B character in the dependency name Repo Radar reads.
+pub fn cargo_fixture_hostile_dependency_name() -> Fixture {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n[dependencies]\n\"evil\\u001B[31mname\" = \"1\"\n",
+    );
+    fixture
+}
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);

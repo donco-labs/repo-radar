@@ -43,7 +43,7 @@ Everything before those phases exists to give them something worth showing.
 | 1 | [001 scan engine](specs/001-scan-engine.md) | Deterministic, testable library core | Complete |
 | 2 | [002 structured output](specs/002-structured-output.md) | Stable JSON contract, strict CLI | Complete |
 | 3 | [000 safety invariants](specs/000-safety-invariants.md) | Immutability harness every later phase reuses | Complete |
-| 4 | [003 repository intelligence](specs/003-repository-intelligence.md) | Lines, languages, directories, Git basics, Cargo deps | In progress |
+| 4 | [003 repository intelligence](specs/003-repository-intelligence.md) | Lines, languages, directories, Git basics, Cargo deps | Complete |
 | 5 | [Engineering guidelines](ENGINEERING.md) | Module tree, the `Analysis` seam, crate lints, MSRV | Complete |
 | 6 | [014 project profile](specs/014-project-profile.md) | Purpose and full tech stack, with evidence | Planned |
 | 7 | [013 provenance](specs/013-provenance.md) | Origin, fork status, license, authorship | Planned |

@@ -38,7 +38,7 @@ The terminal explorer keeps [`ratatui`](https://ratatui.rs). Unifying it under t
 - It performs no network access unless you explicitly ask, and never sends repository content anywhere
 - It collects no telemetry, and never will
 
-This is the central product promise, not a limitation of the current release, and **it is enforced rather than asserted**. A test harness digests a fixture tree — contents, sizes, timestamps, permissions, and symlink targets — before and after every command, and fails if anything moved, including on error paths. Thirteen tests hold the ten invariants in [spec 000](docs/specs/000-safety-invariants.md), which also records, honestly, the two criteria not yet fully enforced and why.
+This is the central product promise, not a limitation of the current release, and **it is enforced rather than asserted**. A test harness digests a fixture tree — contents, sizes, timestamps, permissions, and symlink targets — before and after every command, and fails if anything moved, including on error paths. Fifteen tests hold the ten invariants in [spec 000](docs/specs/000-safety-invariants.md), which also records, honestly, the two criteria not yet fully enforced and why.
 
 The harness is tested against itself: it must detect created, modified, and removed files, and it fails rather than trivially passes when run over an empty tree. A harness that cannot fail would make everything built on it worthless.
 
@@ -60,6 +60,7 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 - **Terminal-safe output** — file names carrying ANSI escape sequences or other control characters are neutralized before display, so a hostile repository cannot recolor, reposition, or hide part of a report.
 - **Enforced immutability** — a shared test harness proves every command leaves the scanned repository, and its `.git` directory, byte-identical.
 - **Git basics** — status counts (modified, staged, untracked, ignored) and recent commit activity by day, for a Git worktree; a non-Git directory still produces a complete report. Every `git` invocation carries `--no-optional-locks` and `-c core.fsmonitor=false`, isolates the environment, and is invoked with the root passed via the process's working directory rather than as a command-line argument.
+- **Cargo dependency view** — direct dependencies from `Cargo.toml` (name, version requirement, kind, and source) and the locked package set from `Cargo.lock` (total and local packages), reported separately so declared and resolved never get collapsed together; a missing or malformed manifest still produces a complete report.
 
 ## Getting Started
 
@@ -131,6 +132,7 @@ Options:
   --no-lines            Skip line counting (faster; lines report as not evaluated)
   --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
   --since-days N        Days back the commit activity window covers (default: 30)
+  --no-cargo            Skip reading Cargo.toml and Cargo.lock (report as not evaluated)
   -h, --help            Print help and exit
 ```
 
@@ -164,6 +166,17 @@ repo-radar . --format json --top 2
   "lines": { "evaluated": true, "lines": 1234, "text_files": 10, "binary_files": 1, "unreadable_files": 0 },
   "git_status": { "evaluated": true, "modified": 2, "staged": 1, "untracked": 3, "ignored": 4 },
   "git_activity": { "evaluated": true, "window_days": 30, "commits": 12, "by_day": [{ "date": "2026-09-10", "commits": 12 }] },
+  "cargo_manifest": {
+    "evaluated": true,
+    "package_name": "repo-radar",
+    "package_version": "0.1.0",
+    "workspace_root": false,
+    "dependencies": [
+      { "name": "serde", "requirement": "1", "kind": "normal", "target": null, "source": "registry" },
+      { "name": "toml", "requirement": "1", "kind": "normal", "target": null, "source": "registry" }
+    ]
+  },
+  "cargo_lock": { "evaluated": true, "lock_version": 4, "packages": 21, "local_packages": 1 },
   "warnings": []
 }
 ```
@@ -196,6 +209,23 @@ yet (`git_status` alone still runs in that case). Repo Radar never shells
 out with the scanned path as an argument, never mutates Git state, and
 never reads `git`'s own error text into the report; see
 `docs/specs/000-safety-invariants.md` invariants I2, I3, and I4.
+
+`cargo_manifest` lists direct dependencies from `Cargo.toml` — name,
+version requirement, `kind` (`normal`, `dev`, or `build`), the `cfg(...)`
+`target` when one applies, and where each resolves from (`registry`, `git`,
+`path`, or `workspace`) — sorted by kind then name. `cargo_lock` reports
+only counts from `Cargo.lock`: the total resolved package count and how
+many have no `source` (workspace members and path dependencies, counted as
+local rather than fetched). The two are reported separately and can
+disagree — a manifest with no committed lockfile is ordinary, not a
+failure. Both report `not evaluated` when `--no-cargo` was passed, when the
+file is missing, or when it could not be parsed; a malformed `Cargo.toml`
+degrades the manifest analysis alone; it does not abort the scan. As with
+Git, Repo Radar never puts a TOML parser's own error text into the report —
+measured to leak repository content through *two* channels, not one:
+`Display` echoes the offending line verbatim, and `Error::message()`, which
+looks safe, embeds the offending value in a type mismatch. Only a line
+number, computed by Repo Radar's own code, ever reaches the `detail` field.
 
 Pipeline examples:
 
@@ -260,7 +290,7 @@ Composition stops being a list of file extensions: languages ranked by source by
 
 | Phase | Feature | Status |
 | --- | --- | --- |
-| 4 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, largest directories, Git basics, Cargo deps | In progress |
+| 4 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, largest directories, Git basics, Cargo deps | Complete |
 | 5 | [Engineering guidelines](docs/ENGINEERING.md) — module tree, the `Analysis` seam, crate lints, declared MSRV | Planned |
 | 6 | [Project profile](docs/specs/014-project-profile.md) — stated purpose from the manifest or README, and full tech stack, every finding citing its evidence file | Planned |
 | 7 | [Provenance](docs/specs/013-provenance.md) — origin, fork status, license, authorship, bus factor | Planned |

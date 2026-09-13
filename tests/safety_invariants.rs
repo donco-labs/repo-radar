@@ -8,7 +8,10 @@ mod common;
 use std::fs;
 use std::path::Path;
 
-use common::{Fixture, TreeDigest, assert_target_unchanged, git, git_fixture, run};
+use common::{
+    Fixture, TreeDigest, assert_target_unchanged, cargo_fixture_hostile_dependency_name,
+    cargo_fixture_malformed, git, git_fixture, run,
+};
 
 #[cfg(unix)]
 use common::git_fixture_hostile_fsmonitor;
@@ -414,6 +417,57 @@ fn non_git_directory_still_produces_a_report() {
     assert_eq!(report["git_status"]["reason"], "input_unavailable");
     assert_eq!(report["git_activity"]["evaluated"], false);
     assert_eq!(report["git_activity"]["reason"], "input_unavailable");
+}
+
+/// Spec 003, AC 6: a malformed manifest must not abort the scan; the
+/// manifest analysis reports its own failure and the rest of the report
+/// stays complete.
+#[test]
+fn malformed_manifest_does_not_abort_the_scan() {
+    let fixture = cargo_fixture_malformed();
+    let root = fixture.root.display().to_string();
+
+    let report: serde_json::Value =
+        assert_target_unchanged(&fixture.root, "scan of a malformed Cargo.toml", || {
+            let output = run(&[&root, "--format", "json"]);
+            assert!(
+                output.status.success(),
+                "a malformed manifest must not abort the scan (spec 003, AC 6)"
+            );
+            serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+        });
+
+    assert_eq!(report["cargo_manifest"]["evaluated"], false);
+    assert_eq!(report["cargo_manifest"]["reason"], "failed");
+    assert!(
+        report["files"].as_u64().expect("files should be a number") > 0,
+        "the rest of the report must still be complete"
+    );
+}
+
+/// I4: a dependency name is untrusted manifest content, the same way a file
+/// name is. The text renderer must neutralize its control characters before
+/// the name reaches the terminal.
+#[test]
+fn i4_hostile_dependency_name_does_not_reach_output_unsanitized() {
+    let fixture = cargo_fixture_hostile_dependency_name();
+    let root = fixture.root.display().to_string();
+
+    let stdout =
+        assert_target_unchanged(&fixture.root, "scan of a hostile dependency name", || {
+            let output = run(&[&root, "--format", "text"]);
+            assert!(output.status.success());
+            String::from_utf8_lossy(&output.stdout).into_owned()
+        });
+
+    assert!(
+        stdout.contains("name"),
+        "the dependency must still be reported: {stdout:?}"
+    );
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "a control character from a dependency name reached stdout (spec 000, invariant I4)"
+    );
 }
 
 #[test]

@@ -12,7 +12,7 @@ pub use markup::Html;
 use std::fmt;
 use std::path::Path;
 
-use crate::{Analysis, NotEvaluated, ScanReport, display_path};
+use crate::{Analysis, CargoManifest, NotEvaluated, ScanReport, display_path};
 
 use super::format_bytes;
 
@@ -126,6 +126,46 @@ fn document(root: &Path, report: &ScanReport) -> Html {
         )),
         Analysis::NotEvaluated(reason) => html.push_escaped(&not_evaluated_text(reason)),
     }
+    html.push_static("</p></article><article class=\"panel\"><h2>Cargo</h2><p>Package: ");
+    match &report.cargo_manifest {
+        Analysis::Ran(manifest) => {
+            html.push_escaped(&manifest_summary(manifest));
+            html.push_static("</p>");
+            if manifest.dependencies.is_empty() {
+                html.push_static("<p class=\"empty\">No direct dependencies.</p>");
+            } else {
+                html.push_static(
+                    "<table><thead><tr><th>Kind</th><th>Name</th><th>Requirement</th><th>Source</th><th>Target</th></tr></thead><tbody>",
+                );
+                for dependency in &manifest.dependencies {
+                    html.push_static("<tr><td>");
+                    html.push_escaped(dependency.kind.label());
+                    html.push_static("</td><td><code>");
+                    html.push_escaped(&dependency.name);
+                    html.push_static("</code></td><td>");
+                    html.push_escaped(dependency.requirement.as_deref().unwrap_or("-"));
+                    html.push_static("</td><td>");
+                    html.push_escaped(dependency.source.label());
+                    html.push_static("</td><td>");
+                    html.push_escaped(dependency.target.as_deref().unwrap_or(""));
+                    html.push_static("</td></tr>");
+                }
+                html.push_static("</tbody></table>");
+            }
+        }
+        Analysis::NotEvaluated(reason) => {
+            html.push_escaped(&not_evaluated_text(reason));
+            html.push_static("</p>");
+        }
+    }
+    html.push_static("<p>Lockfile: ");
+    match &report.cargo_lock {
+        Analysis::Ran(lock) => html.push_escaped(&format!(
+            "{} packages, {} local",
+            lock.packages, lock.local_packages
+        )),
+        Analysis::NotEvaluated(reason) => html.push_escaped(&not_evaluated_text(reason)),
+    }
     html.push_static("</p></article><article class=\"panel panel-wide\"><h2>Scan notes</h2>");
     if report.warnings.is_empty() {
         html.push_static("<p class=\"empty\">No warnings. The scan completed cleanly.</p>");
@@ -147,13 +187,28 @@ fn document(root: &Path, report: &ScanReport) -> Html {
     html
 }
 
-/// A short, human-readable reason for a `NotEvaluated` Git result.
+/// A short summary of the package a manifest declares. Returns raw,
+/// unescaped text — `name` and `version` are untrusted manifest content, and
+/// every call site pushes the result through [`Html::push_escaped`] rather
+/// than escaping here, matching how every other value in this module is
+/// handled.
+fn manifest_summary(manifest: &CargoManifest) -> String {
+    match (&manifest.package_name, &manifest.package_version) {
+        (Some(name), Some(version)) => format!("{name} {version}"),
+        (Some(name), None) => name.clone(),
+        (None, _) if manifest.workspace_root => "virtual workspace".to_owned(),
+        (None, _) => "unnamed package".to_owned(),
+    }
+}
+
+/// A short, human-readable reason for a `NotEvaluated` result.
 ///
 /// The detail, when present, is more specific than the wire token
 /// (`"not a Git worktree"` rather than `input_unavailable`); every detail
-/// string is tool-authored (see `src/analysis/git.rs`), never repository
-/// content, but it still goes through [`Html::escape`] via `push_escaped`
-/// like every other value this module writes.
+/// string is tool-authored (see `src/analysis/git.rs` and
+/// `src/analysis/cargo.rs`), never repository content, but it still goes
+/// through [`Html::escape`] via `push_escaped` like every other value this
+/// module writes.
 fn not_evaluated_text(reason: &NotEvaluated) -> String {
     format!(
         "not evaluated ({})",

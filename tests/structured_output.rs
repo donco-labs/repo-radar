@@ -4,7 +4,7 @@ use serde_json::Value;
 
 mod common;
 
-use common::{git_fixture_empty, git_fixture_with_changes, run};
+use common::{Fixture, assert_target_unchanged, git_fixture_empty, git_fixture_with_changes, run};
 
 #[test]
 fn json_output_is_machine_readable_and_honors_top_zero() {
@@ -160,4 +160,113 @@ fn empty_repository_reports_status_but_not_activity() {
     );
     assert_eq!(report["git_activity"]["evaluated"], false);
     assert_eq!(report["git_activity"]["reason"], "input_unavailable");
+}
+
+/// Spec 003, AC 5: direct dependencies and the locked package set are
+/// reported separately, so a consumer can tell "declared" apart from
+/// "resolved".
+#[test]
+fn cargo_analyses_report_dependencies_in_json() {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n\
+          [dependencies]\n\
+          serde = \"1\"\n\
+          log = { version = \"0.4\", features = [\"std\"] }\n",
+    );
+    fixture.file(
+        "Cargo.lock",
+        b"version = 4\n\n\
+          [[package]]\n\
+          name = \"serde\"\n\
+          version = \"1.0.0\"\n\
+          source = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n\
+          [[package]]\n\
+          name = \"fixture\"\n\
+          version = \"0.1.0\"\n",
+    );
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "cargo analyses in JSON", || {
+        let output = run(&[&root, "--format", "json"]);
+        assert!(output.status.success());
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    assert_eq!(report["cargo_manifest"]["evaluated"], true);
+    assert_eq!(report["cargo_manifest"]["package_name"], "fixture");
+    assert_eq!(report["cargo_manifest"]["package_version"], "0.1.0");
+    assert_eq!(
+        report["cargo_manifest"]["dependencies"]
+            .as_array()
+            .expect("dependencies should be an array")
+            .len(),
+        2
+    );
+
+    assert_eq!(report["cargo_lock"]["evaluated"], true);
+    assert_eq!(report["cargo_lock"]["lock_version"], 4);
+    assert_eq!(report["cargo_lock"]["packages"], 2);
+    assert_eq!(
+        report["cargo_lock"]["local_packages"], 1,
+        "the fixture package itself has no source and is local"
+    );
+}
+
+/// Spec 003, AC 7: `--no-cargo` disables both Cargo analyses, and a disabled
+/// analysis reports `not evaluated`, never a zero dressed up as data.
+#[test]
+fn no_cargo_flag_reports_not_evaluated() {
+    let fixture = Fixture::typical();
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "--no-cargo", || {
+        let output = run(&[&root, "--format", "json", "--no-cargo"]);
+        assert!(output.status.success());
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    for analysis in ["cargo_manifest", "cargo_lock"] {
+        assert_eq!(
+            report[analysis]["evaluated"], false,
+            "{analysis} must say it was not evaluated"
+        );
+        assert_eq!(report[analysis]["reason"], "disabled");
+    }
+    assert_eq!(report["cargo_manifest"]["package_name"], Value::Null);
+    assert_eq!(
+        report["cargo_manifest"]["dependencies"]
+            .as_array()
+            .expect("dependencies should be an array")
+            .len(),
+        0
+    );
+    assert_eq!(report["cargo_lock"]["packages"], 0);
+    assert_eq!(report["cargo_lock"]["local_packages"], 0);
+}
+
+/// A directory that is not a Cargo project at all — no `Cargo.toml`, no
+/// `Cargo.lock` — must still exit 0 with a complete report (spec 003, the
+/// 4c parcel row; mirrors `non_git_directory_still_produces_a_report` in
+/// `tests/safety_invariants.rs` for the Git analyses).
+#[test]
+fn non_cargo_directory_still_produces_a_report() {
+    let fixture = Fixture::new();
+    fixture.file("README.md", b"# no cargo here\n");
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "non-Cargo directory", || {
+        let output = run(&[&root, "--format", "json"]);
+        assert!(
+            output.status.success(),
+            "a non-Cargo directory must still exit 0 with a complete report"
+        );
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    assert_eq!(report["cargo_manifest"]["evaluated"], false);
+    assert_eq!(report["cargo_manifest"]["reason"], "input_unavailable");
+    assert_eq!(report["cargo_lock"]["evaluated"], false);
+    assert_eq!(report["cargo_lock"]["reason"], "input_unavailable");
 }
