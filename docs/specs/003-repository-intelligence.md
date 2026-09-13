@@ -1,6 +1,6 @@
 # Feature Specification: Repository Intelligence
 
-Status: Planned
+Status: Implemented
 Priority: P0
 Depends on: `001-scan-engine`, `002-structured-output`
 
@@ -31,7 +31,7 @@ This phase is too broad for one change, so it ships as three, each with its own 
 | --- | --- | --- | --- |
 | **4a** | Per-file text signals and directory aggregates: line counts, language families, largest directories | 1, 2, 7 | Delivered |
 | **4b** | Git basics: status counts and recent commit activity | 3, 4 | Delivered |
-| **4c** | Cargo dependency view from `Cargo.toml` and `Cargo.lock` | 5 | Planned |
+| **4c** | Cargo dependency view from `Cargo.toml` and `Cargo.lock` | 5 | Delivered |
 
 Criterion 6's fixtures are added by the parcel that needs each: binary content in 4a, the Git and non-Git directories in 4b, the malformed manifest in 4c.
 
@@ -48,6 +48,8 @@ Criterion 6's fixtures are added by the parcel that needs each: binary content i
 **Disabling an analysis reports `not evaluated`, never zero.** `--no-lines` turns off line counting. Every surface must then state that lines were not evaluated. A disabled analysis rendering as `0 lines` would be the exact failure invariant I10 exists to prevent.
 
 **`-c core.fsmonitor=false` is load-bearing, and the vector it blocks is a verified working exploit, not a theoretical one.** A repository whose own `.git/config` sets `core.fsmonitor` to a command executes that command on a plain `git status` — confirmed against git 2.x on 2026-09-10 with a script that ran and left evidence of execution. That is invariant I3 broken by the tool itself: repository content executed by the act of inspecting it. `-c core.fsmonitor=false` on every `git` invocation this parcel makes overrides the repository's own setting and blocks it; `tests/safety_invariants.rs::i3_hostile_fsmonitor_config_is_not_executed` pins this, and was observed to fail with the flag removed before being confirmed to pass with it restored. Also checked on the same version and found **not** to execute during `status --porcelain`: `filter.<name>.clean` via `.gitattributes`, `core.hooksPath` with a `post-index-change` hook, and `core.alternateRefsCommand` during `log`. Those are recorded as checked-and-clear for the commands this parcel runs, not as guaranteed-safe forever — a future parcel adding `git diff`, `git cat-file`, or a checkout-shaped operation re-enters filter-driver territory and must re-verify.
+
+**A TOML parser's own error text is a second, independently-arrived-at instance of the same leak class as git's stderr, and it leaks through two channels, not one.** `toml::de::Error`'s `Display` echoes the offending source line back verbatim, live ANSI escapes included — the same defect spec 000 criterion 6 already caught once, in file names. Less obviously, `Error::message()` — which reads as the safe, structured alternative — is not: serde's own type-mismatch errors embed the offending value verbatim (measured: `invalid type: string "sk_live_SECRET_VALUE", expected u32`). Parcel 4c never puts either into the report; only `Error::span()`, a byte range with no content in it, is used, converted to a line number by tool-owned code. The rule generalizes beyond this one parser: **diagnostic text from a parser or subprocess is untrusted content, not a message**, regardless of how safe a given accessor's name sounds.
 
 ## Acceptance Criteria
 

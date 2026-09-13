@@ -23,6 +23,9 @@ pub mod analysis;
 mod languages;
 pub mod render;
 
+pub use analysis::cargo::{
+    CargoDependency, CargoLock, CargoManifest, DependencyKind, DependencySource,
+};
 pub use analysis::git::{DayCount, GitActivity, GitStatus};
 pub use languages::LANGUAGE_TABLE_VERSION;
 
@@ -38,6 +41,8 @@ pub struct ScanConfig {
     pub read_git: bool,
     /// Days back the activity window covers. Defaults to 30.
     pub activity_window_days: u32,
+    /// Read Cargo manifests. Defaults to true.
+    pub read_cargo: bool,
 }
 
 impl Default for ScanConfig {
@@ -50,6 +55,7 @@ impl Default for ScanConfig {
             count_lines: true,
             read_git: true,
             activity_window_days: 30,
+            read_cargo: true,
         }
     }
 }
@@ -261,6 +267,10 @@ pub struct ScanReport {
     pub git_status: Analysis<GitStatus>,
     /// Recent commit activity, or why it was not produced.
     pub git_activity: Analysis<GitActivity>,
+    /// What `Cargo.toml` declares, or why it was not read.
+    pub cargo_manifest: Analysis<CargoManifest>,
+    /// What `Cargo.lock` resolved to, or why it was not read.
+    pub cargo_lock: Analysis<CargoLock>,
     /// Non-fatal problems encountered while scanning.
     pub warnings: Vec<ScanWarning>,
 }
@@ -343,6 +353,7 @@ pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
     };
 
     (report.git_status, report.git_activity) = analysis::git::analyze(root, config);
+    (report.cargo_manifest, report.cargo_lock) = analysis::cargo::analyze(root, config);
 
     report.largest_files.sort_by(|left, right| {
         right

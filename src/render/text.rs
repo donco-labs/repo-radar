@@ -3,7 +3,9 @@
 use std::fmt;
 use std::path::Path;
 
-use crate::{Analysis, NotEvaluated, ScanReport, display_path, sanitize_for_terminal};
+use crate::{
+    Analysis, CargoManifest, NotEvaluated, ScanReport, display_path, sanitize_for_terminal,
+};
 
 use super::format_bytes;
 
@@ -49,6 +51,56 @@ pub fn write_summary(out: &mut impl fmt::Write, root: &Path, report: &ScanReport
         Analysis::NotEvaluated(reason) => writeln!(
             out,
             "  Activity: not evaluated ({})",
+            not_evaluated_text(reason)
+        )?,
+    }
+
+    writeln!(out, "\nCargo:")?;
+    match &report.cargo_manifest {
+        Analysis::Ran(manifest) => {
+            writeln!(out, "  Package:      {}", manifest_summary(manifest))?;
+            writeln!(
+                out,
+                "  Dependencies: {} direct",
+                manifest.dependencies.len()
+            )?;
+            for dependency in &manifest.dependencies {
+                let requirement = dependency
+                    .requirement
+                    .as_deref()
+                    .map(sanitize_for_terminal)
+                    .unwrap_or_else(|| "-".to_owned());
+                let target = dependency
+                    .target
+                    .as_deref()
+                    .map(sanitize_for_terminal)
+                    .unwrap_or_default();
+                writeln!(
+                    out,
+                    "    {:<6} {:<24} {:<10} {:<9} {}",
+                    dependency.kind.label(),
+                    sanitize_for_terminal(&dependency.name),
+                    requirement,
+                    dependency.source.label(),
+                    target
+                )?;
+            }
+        }
+        Analysis::NotEvaluated(reason) => writeln!(
+            out,
+            "  Manifest:     not evaluated ({})",
+            not_evaluated_text(reason)
+        )?,
+    }
+    match &report.cargo_lock {
+        Analysis::Ran(lock) => writeln!(
+            out,
+            "  Lockfile:     {} packages, {} local",
+            lock.packages, lock.local_packages
+        )?,
+        Analysis::NotEvaluated(reason) => writeln!(
+            out,
+            "  Lockfile:     not evaluated ({})",
             not_evaluated_text(reason)
         )?,
     }
@@ -106,12 +158,30 @@ pub fn write_summary(out: &mut impl fmt::Write, root: &Path, report: &ScanReport
     Ok(())
 }
 
-/// A short, human-readable reason for a `NotEvaluated` Git result.
+/// A short summary of the package a manifest declares: `"name version"` when
+/// both are present, just the name when the version is not, or a label for
+/// the two cases with no package at all. `name` and `version` are untrusted
+/// manifest content and are sanitized before display.
+fn manifest_summary(manifest: &CargoManifest) -> String {
+    match (&manifest.package_name, &manifest.package_version) {
+        (Some(name), Some(version)) => format!(
+            "{} {}",
+            sanitize_for_terminal(name),
+            sanitize_for_terminal(version)
+        ),
+        (Some(name), None) => sanitize_for_terminal(name),
+        (None, _) if manifest.workspace_root => "virtual workspace".to_owned(),
+        (None, _) => "unnamed package".to_owned(),
+    }
+}
+
+/// A short, human-readable reason for a `NotEvaluated` result.
 ///
 /// The detail, when present, is more specific than the wire token
 /// (`"not a Git worktree"` rather than `input_unavailable`); every detail
-/// string is tool-authored (see `src/analysis/git.rs`), never repository
-/// content, so no sanitizing is needed here.
+/// string is tool-authored (see `src/analysis/git.rs` and
+/// `src/analysis/cargo.rs`), never repository content, so no sanitizing is
+/// needed here.
 fn not_evaluated_text(reason: &NotEvaluated) -> &str {
     reason.detail().unwrap_or_else(|| reason.reason())
 }

@@ -18,6 +18,7 @@ struct Options {
     count_lines: bool,
     read_git: bool,
     since_days: u32,
+    read_cargo: bool,
 }
 
 impl Default for Options {
@@ -29,6 +30,7 @@ impl Default for Options {
             count_lines: true,
             read_git: true,
             since_days: 30,
+            read_cargo: true,
         }
     }
 }
@@ -57,6 +59,7 @@ fn main() {
         count_lines: options.count_lines,
         read_git: options.read_git,
         activity_window_days: options.since_days,
+        read_cargo: options.read_cargo,
         ..ScanConfig::default()
     };
     match scan(&options.root, &config) {
@@ -119,6 +122,10 @@ fn parse_arguments(arguments: &[String]) -> Result<Options, String> {
                 options.read_git = false;
                 index += 1;
             }
+            "--no-cargo" => {
+                options.read_cargo = false;
+                index += 1;
+            }
             "--since-days" => {
                 let value = take_value(arguments, index, "--since-days")?;
                 options.since_days = value.parse().map_err(|_| {
@@ -169,6 +176,7 @@ Options:
   --no-lines            Skip line counting (faster; lines report as not evaluated)
   --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
   --since-days N        Days back the commit activity window covers (default: 30)
+  --no-cargo            Skip reading Cargo.toml and Cargo.lock (report as not evaluated)
   -h, --help            Print this help and exit
 
 Exit status:
@@ -198,6 +206,7 @@ mod tests {
         assert!(options.count_lines);
         assert!(options.read_git);
         assert_eq!(options.since_days, 30);
+        assert!(options.read_cargo);
     }
 
     #[test]
@@ -205,6 +214,13 @@ mod tests {
         let options = parse_arguments(&arguments(&["--no-lines"])).unwrap();
 
         assert!(!options.count_lines);
+    }
+
+    #[test]
+    fn no_cargo_flag_disables_cargo_analyses() {
+        let options = parse_arguments(&arguments(&["--no-cargo"])).unwrap();
+
+        assert!(!options.read_cargo);
     }
 
     #[test]
