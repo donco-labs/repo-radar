@@ -270,3 +270,78 @@ fn non_cargo_directory_still_produces_a_report() {
     assert_eq!(report["cargo_lock"]["evaluated"], false);
     assert_eq!(report["cargo_lock"]["reason"], "input_unavailable");
 }
+
+/// Spec 014, criteria 1 and 2: a manifest description reaches the JSON
+/// contract with its evidence path and `certain` confidence.
+#[test]
+fn purpose_appears_in_json() {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n\
+          description = \"A fixture crate for exercising the scan engine\"\n",
+    );
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "purpose in JSON", || {
+        let output = run(&[&root, "--format", "json"]);
+        assert!(output.status.success());
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    assert_eq!(report["purpose"]["evaluated"], true);
+    assert_eq!(
+        report["purpose"]["statement"],
+        "A fixture crate for exercising the scan engine"
+    );
+    assert_eq!(report["purpose"]["evidence"], "Cargo.toml");
+    assert_eq!(report["purpose"]["source"], "manifest");
+    assert_eq!(report["purpose"]["confidence"], "certain");
+    assert_eq!(report["purpose"]["truncated"], false);
+    assert!(report["purpose_table_version"].is_number());
+}
+
+/// `--no-profile` disables the analysis; a disabled analysis says so rather
+/// than reporting a plausible-looking zero (invariant I10).
+#[test]
+fn no_profile_flag_reports_not_evaluated() {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"fixture\"\ndescription = \"should not be read\"\n",
+    );
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "--no-profile", || {
+        let output = run(&[&root, "--format", "json", "--no-profile"]);
+        assert!(output.status.success());
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    assert_eq!(report["purpose"]["evaluated"], false);
+    assert_eq!(report["purpose"]["reason"], "disabled");
+    assert_eq!(report["purpose"]["statement"], "");
+    assert_eq!(report["purpose"]["source"], "undetermined");
+    assert_eq!(report["purpose"]["confidence"], "inferred");
+}
+
+/// Spec 014, AC 5, end to end: `Fixture::typical()` has no manifest
+/// description, no README prose (`# Fixture\n` only), and no `.git`
+/// directory — the fixture this criterion is about — and must still exit 0.
+#[test]
+fn a_repository_with_no_stated_purpose_still_exits_zero() {
+    let fixture = Fixture::typical();
+    let root = fixture.root.display().to_string();
+
+    let report: Value = assert_target_unchanged(&fixture.root, "no stated purpose", || {
+        let output = run(&[&root, "--format", "json"]);
+        assert!(
+            output.status.success(),
+            "a repository with no stated purpose must still exit 0 (spec 014, AC 5)"
+        );
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+    });
+
+    assert_eq!(report["purpose"]["evaluated"], false);
+    assert_eq!(report["purpose"]["reason"], "input_unavailable");
+}

@@ -45,7 +45,7 @@ Everything before those phases exists to give them something worth showing.
 | 3 | [000 safety invariants](specs/000-safety-invariants.md) | Immutability harness every later phase reuses | Complete |
 | 4 | [003 repository intelligence](specs/003-repository-intelligence.md) | Lines, languages, directories, Git basics, Cargo deps | Complete |
 | 5 | [Engineering guidelines](ENGINEERING.md) | Module tree, the `Analysis` seam, crate lints, MSRV | Complete |
-| 6 | [014 project profile](specs/014-project-profile.md) | Purpose and full tech stack, with evidence | Planned |
+| 6 | [014 project profile](specs/014-project-profile.md) | Purpose and full tech stack, with evidence | In progress (6a delivered) |
 | 7 | [013 provenance](specs/013-provenance.md) | Origin, fork status, license, authorship | Planned |
 | 8 | [015 runbook](specs/015-runbook.md) | Build, run, test, and configure knowledge | Planned |
 | 9 | [020 orientation brief](specs/020-brief.md) | **The headline command**, onboard and resume modes | Planned |

@@ -19,6 +19,7 @@ struct Options {
     read_git: bool,
     since_days: u32,
     read_cargo: bool,
+    read_profile: bool,
 }
 
 impl Default for Options {
@@ -31,6 +32,7 @@ impl Default for Options {
             read_git: true,
             since_days: 30,
             read_cargo: true,
+            read_profile: true,
         }
     }
 }
@@ -60,6 +62,7 @@ fn main() {
         read_git: options.read_git,
         activity_window_days: options.since_days,
         read_cargo: options.read_cargo,
+        read_profile: options.read_profile,
         ..ScanConfig::default()
     };
     match scan(&options.root, &config) {
@@ -126,6 +129,10 @@ fn parse_arguments(arguments: &[String]) -> Result<Options, String> {
                 options.read_cargo = false;
                 index += 1;
             }
+            "--no-profile" => {
+                options.read_profile = false;
+                index += 1;
+            }
             "--since-days" => {
                 let value = take_value(arguments, index, "--since-days")?;
                 options.since_days = value.parse().map_err(|_| {
@@ -177,6 +184,7 @@ Options:
   --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
   --since-days N        Days back the commit activity window covers (default: 30)
   --no-cargo            Skip reading Cargo.toml and Cargo.lock (report as not evaluated)
+  --no-profile          Skip the project profile (stated purpose reports as not evaluated)
   -h, --help            Print this help and exit
 
 Exit status:
@@ -207,6 +215,7 @@ mod tests {
         assert!(options.read_git);
         assert_eq!(options.since_days, 30);
         assert!(options.read_cargo);
+        assert!(options.read_profile);
     }
 
     #[test]
@@ -228,6 +237,13 @@ mod tests {
         let options = parse_arguments(&arguments(&["--no-git"])).unwrap();
 
         assert!(!options.read_git);
+    }
+
+    #[test]
+    fn no_profile_flag_disables_the_project_profile() {
+        let options = parse_arguments(&arguments(&["--no-profile"])).unwrap();
+
+        assert!(!options.read_profile);
     }
 
     #[test]

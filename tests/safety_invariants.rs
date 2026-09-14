@@ -10,7 +10,7 @@ use std::path::Path;
 
 use common::{
     Fixture, TreeDigest, assert_target_unchanged, cargo_fixture_hostile_dependency_name,
-    cargo_fixture_malformed, git, git_fixture, run,
+    cargo_fixture_malformed, git, git_fixture, profile_fixture_hostile_description, run,
 };
 
 #[cfg(unix)]
@@ -39,6 +39,10 @@ fn every_invocation(root: &str) -> Vec<Vec<String>> {
         owned(&[root, "--no-git"]),
         owned(&[root, "--since-days", "0"]),
         owned(&[root, "--since-days", "365"]),
+        // Cargo and the project profile also run by default; each has its
+        // own opt-out that must be covered here like every other analysis.
+        owned(&[root, "--no-cargo"]),
+        owned(&[root, "--no-profile"]),
         owned(&["--help"]),
         owned(&[root, "--format", "yaml"]),
         owned(&[root, "--top", "not-a-number"]),
@@ -467,6 +471,86 @@ fn i4_hostile_dependency_name_does_not_reach_output_unsanitized() {
     assert!(
         !stdout.contains('\u{1b}'),
         "a control character from a dependency name reached stdout (spec 000, invariant I4)"
+    );
+}
+
+/// I4: a purpose statement is untrusted manifest content, the same way a
+/// dependency name is. Both the text and HTML renderers must neutralize its
+/// control characters before it reaches output (spec 014, test 20).
+#[test]
+fn i4_hostile_purpose_statement_does_not_reach_output_unsanitized() {
+    let fixture = profile_fixture_hostile_description();
+    let root = fixture.root.display().to_string();
+
+    let (text_stdout, html_stdout) = assert_target_unchanged(
+        &fixture.root,
+        "text and html output of a hostile purpose statement",
+        || {
+            let text_output = run(&[&root, "--format", "text"]);
+            assert!(text_output.status.success());
+            let html_output = run(&[&root, "--format", "html"]);
+            assert!(html_output.status.success());
+            (
+                String::from_utf8_lossy(&text_output.stdout).into_owned(),
+                String::from_utf8_lossy(&html_output.stdout).into_owned(),
+            )
+        },
+    );
+
+    assert!(
+        !text_stdout.contains('\u{1b}'),
+        "a control character from a purpose statement reached text output \
+         (spec 000, invariant I4)"
+    );
+    assert!(
+        !html_stdout.contains('\u{1b}'),
+        "a control character from a purpose statement reached html output \
+         (spec 000, invariant I4)"
+    );
+}
+
+/// Spec 014, criterion 6, end to end: a malformed manifest does not abort
+/// the profile analysis (or the scan), and still warns.
+#[test]
+fn malformed_manifest_does_not_abort_the_profile() {
+    let fixture = cargo_fixture_malformed();
+    // `cargo_fixture_malformed` carries `Fixture::typical()`'s README.md
+    // (`# Fixture\n`, no prose) — give it a real paragraph so the profile
+    // has somewhere to fall through to once the manifest is skipped.
+    fixture.file(
+        "README.md",
+        b"# Fixture\n\nA real purpose statement despite the malformed manifest.\n",
+    );
+    let root = fixture.root.display().to_string();
+
+    let report: serde_json::Value = assert_target_unchanged(
+        &fixture.root,
+        "scan of a malformed Cargo.toml (profile)",
+        || {
+            let output = run(&[&root, "--format", "json"]);
+            assert!(
+                output.status.success(),
+                "a malformed manifest must not abort the profile or the scan (spec 014, AC 6)"
+            );
+            serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
+        },
+    );
+
+    assert_eq!(report["cargo_manifest"]["evaluated"], false);
+    assert_eq!(
+        report["purpose"]["evaluated"], true,
+        "the profile must still be evaluated via the README fallback"
+    );
+    assert_eq!(report["purpose"]["source"], "readme");
+    assert!(
+        report["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .iter()
+            .any(|warning| warning["path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("Cargo.toml"))),
+        "a warning naming Cargo.toml must be present"
     );
 }
 

@@ -61,6 +61,7 @@ Shipped today. Everything else is specified and sequenced in the [roadmap](#road
 - **Enforced immutability** — a shared test harness proves every command leaves the scanned repository, and its `.git` directory, byte-identical.
 - **Git basics** — status counts (modified, staged, untracked, ignored) and recent commit activity by day, for a Git worktree; a non-Git directory still produces a complete report. Every `git` invocation carries `--no-optional-locks` and `-c core.fsmonitor=false`, isolates the environment, and is invoked with the root passed via the process's working directory rather than as a command-line argument.
 - **Cargo dependency view** — direct dependencies from `Cargo.toml` (name, version requirement, kind, and source) and the locked package set from `Cargo.lock` (total and local packages), reported separately so declared and resolved never get collapsed together; a missing or malformed manifest still produces a complete report.
+- **Project purpose** — a stated purpose read from a versioned precedence table: a manifest description (`Cargo.toml`, `package.json`, `pyproject.toml`, `composer.json`, or `go.mod`'s module path), then the README's first substantive paragraph, then a non-placeholder `.git/description`; every result names its evidence file and whether it is `certain` (declared by a manifest) or `inferred` (read from prose). A repository with none of these reports `not evaluated` and names what it looked for, never an empty statement.
 
 ## Getting Started
 
@@ -133,6 +134,7 @@ Options:
   --no-git              Skip the Git analyses (status and recent activity report as not evaluated)
   --since-days N        Days back the commit activity window covers (default: 30)
   --no-cargo            Skip reading Cargo.toml and Cargo.lock (report as not evaluated)
+  --no-profile          Skip the project profile (stated purpose reports as not evaluated)
   -h, --help            Print help and exit
 ```
 
@@ -177,6 +179,15 @@ repo-radar . --format json --top 2
     ]
   },
   "cargo_lock": { "evaluated": true, "lock_version": 4, "packages": 21, "local_packages": 1 },
+  "purpose_table_version": 1,
+  "purpose": {
+    "evaluated": true,
+    "statement": "A fast, local repository summary tool for learning Rust",
+    "evidence": "Cargo.toml",
+    "source": "manifest",
+    "confidence": "certain",
+    "truncated": false
+  },
   "warnings": []
 }
 ```
@@ -226,6 +237,36 @@ measured to leak repository content through *two* channels, not one:
 `Display` echoes the offending line verbatim, and `Error::message()`, which
 looks safe, embeds the offending value in a type mismatch. Only a line
 number, computed by Repo Radar's own code, ever reaches the `detail` field.
+
+`purpose` is the repository's stated purpose, read from a fixed, versioned
+precedence table (`purpose_table_version`, alongside `language_table_version`):
+`Cargo.toml`'s `[package].description`, then `package.json`'s `.description`,
+then `pyproject.toml`'s `[project].description` (falling back to
+`[tool.poetry].description`), then `composer.json`'s `.description`, then
+`go.mod`'s `module` path — each `certain`, because a manifest is a
+declaration — then the README's first substantive paragraph, then a
+non-placeholder `.git/description`, both `inferred`. The first source that
+states something wins; a source that exists but is empty (no `description`
+key, or `description.workspace = true`) is a miss, not a stop, and the next
+source is tried. `evidence` names the repository-relative file the statement
+came from — always present when `evaluated` is `true`, since a finding with
+no evidence is a defect. `statement` is whitespace-normalized and capped at
+500 *characters* (not bytes, so a multi-byte statement is never cut
+mid-character); `truncated` is `true` when the cap applied. A repository
+with no manifest description, no README prose, and no Git description
+reports `not evaluated` with a reason naming what was looked for, never an
+empty statement (spec 000, invariant I10). A manifest that exists but could
+not be parsed or read adds a warning naming it — as with `Cargo.toml`'s own
+dependency view, never the parser's own error text — and the profile falls
+through to the next source rather than failing.
+
+Accuracy limits, stated rather than implied: `*.csproj` is not read (it
+would need an XML parser, which is outside this crate's dependency budget for
+one optional field — see spec 014's Clarifications); a workspace-inherited
+Cargo description (`description.workspace = true`) is a miss, since resolving
+it means reading a second manifest this parcel does not read; and inline
+Markdown in a README statement (`**bold**`, `` `code` ``) is preserved as-is
+— stripping it is a rendering decision this project does not make.
 
 Pipeline examples:
 
@@ -292,7 +333,7 @@ Composition stops being a list of file extensions: languages ranked by source by
 | --- | --- | --- |
 | 4 | [Repository intelligence](docs/specs/003-repository-intelligence.md) — lines, languages, largest directories, Git basics, Cargo deps | Complete |
 | 5 | [Engineering guidelines](docs/ENGINEERING.md) — module tree, the `Analysis` seam, crate lints, declared MSRV | Planned |
-| 6 | [Project profile](docs/specs/014-project-profile.md) — stated purpose from the manifest or README, and full tech stack, every finding citing its evidence file | Planned |
+| 6 | [Project profile](docs/specs/014-project-profile.md) — stated purpose from the manifest or README, and full tech stack, every finding citing its evidence file | In progress (6a delivered) |
 | 7 | [Provenance](docs/specs/013-provenance.md) — origin, fork status, license, authorship, bus factor | Planned |
 | 8 | [Runbook](docs/specs/015-runbook.md) — build, run, test, and configure knowledge, extracted and never executed | Planned |
 | 9 | [Orientation brief](docs/specs/020-brief.md) — **the headline command**, in onboard and resume modes | Planned |

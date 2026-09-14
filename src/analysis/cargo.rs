@@ -41,8 +41,12 @@
 //! (invariant I10); [`analyze`] never returns an error.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
+// `read_bounded`'s own body moved to `super::read_bounded`, so this module no
+// longer touches `std::fs` outside its tests, which still exercise the size
+// cap directly against the filesystem.
+#[cfg(test)]
+use std::fs;
 
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +56,10 @@ use crate::{Analysis, NotEvaluated, ScanConfig};
 /// repository cannot turn a manifest or lockfile read into an unbounded
 /// allocation (invariant I9). The largest manifest in a 2026-09-13 sample of
 /// the local registry cache was far under this.
-const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+///
+/// `pub(crate)`: `src/analysis/profile.rs` reuses this same cap for the
+/// manifests it reads, per the build sheet's bounded-reads table.
+pub(crate) const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 
 /// What the manifest at the scanned root declares.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -197,27 +204,14 @@ fn lock_analysis(root: &Path) -> Analysis<CargoLock> {
     }
 }
 
-/// Reads `path` as UTF-8 text, refusing anything over [`MAX_FILE_BYTES`]
-/// via [`fs::metadata`] *before* the content is read (invariant I9). `label`
-/// is the file's own name (`Cargo.toml` or `Cargo.lock`), used only to build
-/// a tool-authored detail string — never anything read from the file.
+/// Reads `path` as UTF-8 text, bounded at [`MAX_FILE_BYTES`]. A thin,
+/// same-arity wrapper over the shared [`super::read_bounded`] (moved there
+/// so `src/analysis/profile.rs` can reuse it with its own caps) — kept here
+/// so every call site in this module, and its existing tests, need no
+/// change. The four detail strings this produces are byte-identical to the
+/// ones the private copy used to build directly.
 fn read_bounded(path: &Path, label: &str) -> Result<String, NotEvaluated> {
-    let missing = || NotEvaluated::InputUnavailable(format!("no {label} at the repository root"));
-
-    let metadata = fs::metadata(path).map_err(|_| missing())?;
-    if !metadata.is_file() {
-        return Err(missing());
-    }
-    if metadata.len() > MAX_FILE_BYTES {
-        return Err(NotEvaluated::Failed(format!(
-            "{label} exceeds the size limit"
-        )));
-    }
-
-    let bytes =
-        fs::read(path).map_err(|_| NotEvaluated::Failed(format!("{label} could not be read")))?;
-    String::from_utf8(bytes)
-        .map_err(|_| NotEvaluated::Failed(format!("{label} is not valid UTF-8")))
+    super::read_bounded(path, label, MAX_FILE_BYTES)
 }
 
 /// Deserialize with `serde`. All five dependency-declaration shapes parse
