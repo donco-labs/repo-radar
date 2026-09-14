@@ -12,7 +12,9 @@ pub use markup::Html;
 use std::fmt;
 use std::path::Path;
 
-use crate::{Analysis, CargoManifest, NotEvaluated, ScanReport, display_path};
+use crate::{
+    Analysis, CargoManifest, NotEvaluated, ScanReport, display_path, sanitize_for_terminal,
+};
 
 use super::format_bytes;
 
@@ -110,7 +112,30 @@ fn document(root: &Path, report: &ScanReport) -> Html {
         }
         html.push_static("</tbody></table>");
     }
-    html.push_static("</article><article class=\"panel\"><h2>Git</h2><p>Status: ");
+    html.push_static("</article><article class=\"panel\"><h2>Profile</h2><p>Purpose: ");
+    match &report.purpose {
+        Analysis::Ran(purpose) => {
+            // A control sequence embedded in repository content is a threat
+            // to a terminal, not to a browser — but this document is text
+            // that could still land in one (a `cat` of the file, a paste
+            // into a shell), so the same neutralizing this module already
+            // applies to a path (`display_path`) applies here too, ahead of
+            // the HTML escaping (spec 000, invariant I4).
+            html.push_escaped(&sanitize_for_terminal(&purpose.statement));
+            if purpose.truncated {
+                html.push_static(" (truncated)");
+            }
+            html.push_static("</p><p>Evidence: ");
+            html.push_escaped(&display_path(&purpose.evidence));
+            html.push_static(" (");
+            html.push_escaped(purpose.source.label());
+            html.push_static(", ");
+            html.push_escaped(purpose.confidence.label());
+            html.push_static(")");
+        }
+        Analysis::NotEvaluated(reason) => html.push_escaped(&not_evaluated_text(reason)),
+    }
+    html.push_static("</p></article><article class=\"panel\"><h2>Git</h2><p>Status: ");
     match &report.git_status {
         Analysis::Ran(status) => html.push_escaped(&format!(
             "{} modified, {} staged, {} untracked, {} ignored",

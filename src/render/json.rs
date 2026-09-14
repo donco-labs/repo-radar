@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::{
     Analysis, CargoLock, CargoManifest, DirectoryEntry, FileEntry, GitActivity, GitStatus,
-    LanguageStat, LineCounts, ScanReport, ScanWarning,
+    LanguageStat, LineCounts, ProjectPurpose, ScanReport, ScanWarning,
 };
 
 #[derive(Serialize)]
@@ -27,6 +27,8 @@ struct JsonReport<'a> {
     git_activity: &'a Analysis<GitActivity>,
     cargo_manifest: &'a Analysis<CargoManifest>,
     cargo_lock: &'a Analysis<CargoLock>,
+    purpose_table_version: u32,
+    purpose: &'a Analysis<ProjectPurpose>,
     warnings: &'a [ScanWarning],
 }
 
@@ -50,6 +52,8 @@ pub fn write_json(out: &mut impl fmt::Write, root: &Path, report: &ScanReport) -
         git_activity: &report.git_activity,
         cargo_manifest: &report.cargo_manifest,
         cargo_lock: &report.cargo_lock,
+        purpose_table_version: crate::PURPOSE_TABLE_VERSION,
+        purpose: &report.purpose,
         warnings: &report.warnings,
     };
     // Every field is an owned, string-keyed, float-free value, so the only way
@@ -91,6 +95,8 @@ mod tests {
             "git_activity",
             "cargo_manifest",
             "cargo_lock",
+            "purpose_table_version",
+            "purpose",
             "warnings",
         ] {
             assert!(value.get(field).is_some(), "missing field '{field}'");

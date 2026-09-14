@@ -308,6 +308,30 @@ pub fn cargo_fixture_hostile_dependency_name() -> Fixture {
     fixture
 }
 
+/// A fixture whose `Cargo.toml` description carries an ANSI escape sequence.
+/// A description is untrusted manifest content the same way a file name is;
+/// used to prove the text and HTML renderers sanitize it (spec 000, I4).
+pub fn profile_fixture_hostile_description() -> Fixture {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "Cargo.toml",
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\ndescription = \"evil\\u001B[31mname\"\n",
+    );
+    fixture
+}
+
+/// A fixture with no manifest description, whose README opens with badges and
+/// a heading before its first real paragraph. The README-extraction path,
+/// end to end (spec 014, criterion 8).
+pub fn profile_fixture_readme_only() -> Fixture {
+    let fixture = Fixture::typical();
+    fixture.file(
+        "README.md",
+        b"# Fixture\n\n[![Build](https://example.invalid/badge.svg)](https://example.invalid/build)\n\nThis fixture repository exists to exercise the README purpose path.\n",
+    );
+    fixture
+}
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);

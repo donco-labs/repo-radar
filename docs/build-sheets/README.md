@@ -56,3 +56,4 @@ the model.**
 | Date | Parcel | Spec | PR | Sheet |
 |---|---|---|---|---|
 | 2026-09-05 | Repository intelligence 4a — text signals, directory aggregates | [003](../specs/003-repository-intelligence.md) | _pending_ | [sheet](2026-09-05-repository-intelligence-4a.md) |
+| 2026-09-13 | Project purpose 6a — manifest/README/Git description precedence, evidence and confidence | [014](../specs/014-project-profile.md) | #11 | [sheet](2026-09-13-project-purpose-6a.md) |

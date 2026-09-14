@@ -29,6 +29,34 @@ pub fn write_summary(out: &mut impl fmt::Write, root: &Path, report: &ScanReport
         writeln!(out, "Lines:      not evaluated")?;
     }
 
+    writeln!(out, "\nProfile:")?;
+    match &report.purpose {
+        Analysis::Ran(purpose) => {
+            let truncated_marker = if purpose.truncated {
+                " (truncated)"
+            } else {
+                ""
+            };
+            writeln!(
+                out,
+                "  Purpose:  {}{truncated_marker}",
+                sanitize_for_terminal(&purpose.statement)
+            )?;
+            writeln!(
+                out,
+                "  Evidence: {} ({}, {})",
+                display_path(&purpose.evidence),
+                purpose.source.label(),
+                purpose.confidence.label()
+            )?;
+        }
+        Analysis::NotEvaluated(reason) => writeln!(
+            out,
+            "  Purpose:  not evaluated ({})",
+            not_evaluated_text(reason)
+        )?,
+    }
+
     writeln!(out, "\nGit:")?;
     match &report.git_status {
         Analysis::Ran(status) => writeln!(

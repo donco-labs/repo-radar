@@ -23,10 +23,14 @@ pub mod analysis;
 mod languages;
 pub mod render;
 
+pub use analysis::Confidence;
 pub use analysis::cargo::{
     CargoDependency, CargoLock, CargoManifest, DependencyKind, DependencySource,
 };
 pub use analysis::git::{DayCount, GitActivity, GitStatus};
+pub use analysis::profile::{
+    MAX_STATEMENT_CHARS, PURPOSE_TABLE_VERSION, ProjectPurpose, PurposeSource,
+};
 pub use languages::LANGUAGE_TABLE_VERSION;
 
 /// What a scan does and does not look at.
@@ -43,6 +47,12 @@ pub struct ScanConfig {
     pub activity_window_days: u32,
     /// Read Cargo manifests. Defaults to true.
     pub read_cargo: bool,
+    /// Run the project profile analyses. Defaults to true.
+    ///
+    /// Named `read_profile`, not `read_purpose`: spec 014's 6c parcel adds
+    /// the stack detector table behind the same switch, and renaming a
+    /// public config field later would be a breaking change for no gain.
+    pub read_profile: bool,
 }
 
 impl Default for ScanConfig {
@@ -56,6 +66,7 @@ impl Default for ScanConfig {
             read_git: true,
             activity_window_days: 30,
             read_cargo: true,
+            read_profile: true,
         }
     }
 }
@@ -271,6 +282,8 @@ pub struct ScanReport {
     pub cargo_manifest: Analysis<CargoManifest>,
     /// What `Cargo.lock` resolved to, or why it was not read.
     pub cargo_lock: Analysis<CargoLock>,
+    /// The repository's stated purpose, or why none was found.
+    pub purpose: Analysis<ProjectPurpose>,
     /// Non-fatal problems encountered while scanning.
     pub warnings: Vec<ScanWarning>,
 }
@@ -354,6 +367,15 @@ pub fn scan(root: &Path, config: &ScanConfig) -> io::Result<ScanReport> {
 
     (report.git_status, report.git_activity) = analysis::git::analyze(root, config);
     (report.cargo_manifest, report.cargo_lock) = analysis::cargo::analyze(root, config);
+
+    // The profile analysis returns its own warnings rather than mutating
+    // `report` directly, because it is the first analysis in this tree that
+    // can warn (criterion 6, a malformed manifest). Appending them after
+    // traversal keeps warning order deterministic: scan-order warnings keep
+    // their existing relative order, and the profile's come last.
+    let (purpose, profile_warnings) = analysis::profile::analyze(root, config);
+    report.purpose = purpose;
+    report.warnings.extend(profile_warnings);
 
     report.largest_files.sort_by(|left, right| {
         right
